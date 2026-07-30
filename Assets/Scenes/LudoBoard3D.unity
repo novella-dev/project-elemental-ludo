@@ -363,6 +363,8 @@ MonoBehaviour:
     orthographic: 0
     orthographicSize: 8.4
     fieldOfView: 37
+  transitionDuration: 0.75
+  transitionFramingPadding: 0.2
   rotationSpeed: 0.18
   zoomSpeed: 0.02
   orthographicZoomSpeed: 0.006

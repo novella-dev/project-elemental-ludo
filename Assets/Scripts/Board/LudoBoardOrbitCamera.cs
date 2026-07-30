@@ -64,6 +64,14 @@ namespace ElementalLudo.Board
                 8.4f,
                 37f);
 
+        [Header("View Transition")]
+        [Min(0f)]
+        [Tooltip("Seconds used to blend between camera presets. Set to zero for instant changes.")]
+        [SerializeField] private float transitionDuration = 0.75f;
+        [Range(0f, 0.5f)]
+        [Tooltip("Temporarily widens the framing near the middle of a transition to keep the board visible.")]
+        [SerializeField] private float transitionFramingPadding = 0.2f;
+
         [Header("Orbit Controls")]
         [SerializeField] private float rotationSpeed = 0.18f;
         [SerializeField] private float zoomSpeed = 0.02f;
@@ -77,26 +85,44 @@ namespace ElementalLudo.Board
 
         private Camera boardCamera;
         private Vector3 viewUp = Vector3.back;
+        private bool transitionActive;
+        private float transitionElapsed;
+        private Vector3 transitionStartPosition;
+        private Vector3 transitionTargetPosition;
+        private Quaternion transitionStartRotation;
+        private Quaternion transitionTargetRotation;
+        private Matrix4x4 transitionStartProjection;
+        private Matrix4x4 transitionTargetProjection;
+        private float transitionStartOrthographicSize;
+        private float transitionTargetOrthographicSize;
+        private float transitionStartFieldOfView;
+        private float transitionTargetFieldOfView;
+        private bool transitionTargetOrthographic;
+        private Vector3 transitionTargetUp;
 
         private void Awake()
         {
             boardCamera = GetComponent<Camera>();
-            ShowThreeDimensionalView();
+            ApplyViewImmediately(threeDimensionalView);
         }
 
         private void LateUpdate()
         {
+            UpdateViewTransition();
+
             Mouse mouse = Mouse.current;
             if (mouse != null)
             {
                 if (mouse.rightButton.isPressed)
                 {
+                    CompleteViewTransition();
                     Orbit(mouse.delta.ReadValue());
                 }
 
                 float scroll = mouse.scroll.ReadValue().y;
                 if (!Mathf.Approximately(scroll, 0f))
                 {
+                    CompleteViewTransition();
                     Zoom(scroll);
                 }
             }
@@ -125,19 +151,19 @@ namespace ElementalLudo.Board
         [ContextMenu("Views/1 - Top (2D)")]
         public void ShowTopView()
         {
-            ApplyView(topView);
+            MoveToView(topView);
         }
 
         [ContextMenu("Views/2 - Isometric (2.5D)")]
         public void ShowIsometricView()
         {
-            ApplyView(isometricView);
+            MoveToView(isometricView);
         }
 
         [ContextMenu("Views/3 - Perspective (3D)")]
         public void ShowThreeDimensionalView()
         {
-            ApplyView(threeDimensionalView);
+            MoveToView(threeDimensionalView);
         }
 
         private void Orbit(Vector2 pointerDelta)
@@ -216,20 +242,187 @@ namespace ElementalLudo.Board
             LookAtBoard();
         }
 
-        private void ApplyView(CameraViewPreset preset)
+        private void MoveToView(CameraViewPreset preset)
         {
+            if (!Application.isPlaying || transitionDuration <= Mathf.Epsilon)
+            {
+                ApplyViewImmediately(preset);
+                return;
+            }
+
+            BeginViewTransition(preset);
+        }
+
+        private void BeginViewTransition(CameraViewPreset preset)
+        {
+            Camera cameraComponent = GetBoardCamera();
+            Vector3 targetUp = preset.UpDirection.sqrMagnitude > Mathf.Epsilon
+                ? preset.UpDirection.normalized
+                : Vector3.up;
+
+            transitionActive = true;
+            transitionElapsed = 0f;
+            transitionStartPosition = transform.position;
+            transitionTargetPosition = target + preset.PositionOffset;
+            transitionStartRotation = transform.rotation;
+            transitionTargetRotation = LookAtRotation(
+                transitionTargetPosition,
+                targetUp);
+            transitionStartProjection = cameraComponent.projectionMatrix;
+            transitionTargetProjection = GetProjectionMatrix(
+                cameraComponent,
+                preset);
+            transitionStartOrthographicSize =
+                cameraComponent.orthographicSize;
+            transitionTargetOrthographicSize =
+                Mathf.Max(0.1f, preset.OrthographicSize);
+            transitionStartFieldOfView = cameraComponent.fieldOfView;
+            transitionTargetFieldOfView =
+                Mathf.Clamp(preset.FieldOfView, 1f, 179f);
+            transitionTargetOrthographic = preset.Orthographic;
+            transitionTargetUp = targetUp;
+        }
+
+        private void UpdateViewTransition()
+        {
+            if (!transitionActive)
+            {
+                return;
+            }
+
+            transitionElapsed += Time.unscaledDeltaTime;
+            float progress = Mathf.Clamp01(
+                transitionElapsed / Mathf.Max(transitionDuration, 0.0001f));
+            float easedProgress =
+                progress * progress * (3f - 2f * progress);
+
+            transform.position = Vector3.Lerp(
+                transitionStartPosition,
+                transitionTargetPosition,
+                easedProgress);
+            transform.rotation = Quaternion.Slerp(
+                transitionStartRotation,
+                transitionTargetRotation,
+                easedProgress);
+
+            Camera cameraComponent = GetBoardCamera();
+            cameraComponent.orthographicSize = Mathf.Lerp(
+                transitionStartOrthographicSize,
+                transitionTargetOrthographicSize,
+                easedProgress);
+            cameraComponent.fieldOfView = Mathf.Lerp(
+                transitionStartFieldOfView,
+                transitionTargetFieldOfView,
+                easedProgress);
+            Matrix4x4 blendedProjection = LerpProjectionMatrix(
+                transitionStartProjection,
+                transitionTargetProjection,
+                easedProgress);
+            float midpointWeight =
+                4f * easedProgress * (1f - easedProgress);
+            float framingScale =
+                1f - transitionFramingPadding * midpointWeight;
+            blendedProjection.m00 *= framingScale;
+            blendedProjection.m11 *= framingScale;
+            cameraComponent.projectionMatrix = blendedProjection;
+
+            if (progress >= 1f)
+            {
+                CompleteViewTransition();
+            }
+        }
+
+        private void CompleteViewTransition()
+        {
+            if (!transitionActive)
+            {
+                return;
+            }
+
+            transitionActive = false;
+            transform.position = transitionTargetPosition;
+            transform.rotation = transitionTargetRotation;
+            viewUp = transitionTargetUp;
+
+            Camera cameraComponent = GetBoardCamera();
+            cameraComponent.orthographic = transitionTargetOrthographic;
+            cameraComponent.orthographicSize =
+                transitionTargetOrthographicSize;
+            cameraComponent.fieldOfView = transitionTargetFieldOfView;
+            cameraComponent.ResetProjectionMatrix();
+        }
+
+        private void ApplyViewImmediately(CameraViewPreset preset)
+        {
+            transitionActive = false;
+
             Camera cameraComponent = GetBoardCamera();
             cameraComponent.orthographic = preset.Orthographic;
             cameraComponent.orthographicSize =
                 Mathf.Max(0.1f, preset.OrthographicSize);
             cameraComponent.fieldOfView =
                 Mathf.Clamp(preset.FieldOfView, 1f, 179f);
+            cameraComponent.ResetProjectionMatrix();
 
-            transform.position = target + preset.PositionOffset;
             viewUp = preset.UpDirection.sqrMagnitude > Mathf.Epsilon
                 ? preset.UpDirection.normalized
                 : Vector3.up;
-            LookAtBoard();
+            transform.position = target + preset.PositionOffset;
+            transform.rotation = LookAtRotation(transform.position, viewUp);
+        }
+
+        private Matrix4x4 GetProjectionMatrix(
+            Camera cameraComponent,
+            CameraViewPreset preset)
+        {
+            bool currentOrthographic = cameraComponent.orthographic;
+            float currentOrthographicSize =
+                cameraComponent.orthographicSize;
+            float currentFieldOfView = cameraComponent.fieldOfView;
+            Matrix4x4 currentProjection = cameraComponent.projectionMatrix;
+
+            cameraComponent.orthographic = preset.Orthographic;
+            cameraComponent.orthographicSize =
+                Mathf.Max(0.1f, preset.OrthographicSize);
+            cameraComponent.fieldOfView =
+                Mathf.Clamp(preset.FieldOfView, 1f, 179f);
+            cameraComponent.ResetProjectionMatrix();
+            Matrix4x4 targetProjection = cameraComponent.projectionMatrix;
+
+            cameraComponent.orthographic = currentOrthographic;
+            cameraComponent.orthographicSize = currentOrthographicSize;
+            cameraComponent.fieldOfView = currentFieldOfView;
+            cameraComponent.projectionMatrix = currentProjection;
+            return targetProjection;
+        }
+
+        private Quaternion LookAtRotation(
+            Vector3 cameraPosition,
+            Vector3 upDirection)
+        {
+            Vector3 lookDirection = target - cameraPosition;
+            if (lookDirection.sqrMagnitude <= Mathf.Epsilon)
+            {
+                return transform.rotation;
+            }
+
+            return Quaternion.LookRotation(
+                lookDirection.normalized,
+                upDirection);
+        }
+
+        private static Matrix4x4 LerpProjectionMatrix(
+            Matrix4x4 start,
+            Matrix4x4 end,
+            float progress)
+        {
+            Matrix4x4 result = new Matrix4x4();
+            for (int index = 0; index < 16; index++)
+            {
+                result[index] = Mathf.Lerp(start[index], end[index], progress);
+            }
+
+            return result;
         }
 
         private void LookAtBoard()
@@ -245,6 +438,15 @@ namespace ElementalLudo.Board
             }
 
             return boardCamera;
+        }
+
+        private void OnDisable()
+        {
+            transitionActive = false;
+            if (boardCamera != null)
+            {
+                boardCamera.ResetProjectionMatrix();
+            }
         }
     }
 }
