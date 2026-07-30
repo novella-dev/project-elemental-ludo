@@ -1,0 +1,37 @@
+using UnityEngine;
+
+namespace ElementalLudo.Board
+{
+    [ExecuteAlways]
+    [DisallowMultipleComponent]
+    [RequireComponent(typeof(Camera))]
+    public sealed class LudoBoardViewCamera : MonoBehaviour
+    {
+        [SerializeField] private Vector3 viewPosition = new Vector3(10f, -11f, -15f);
+        [SerializeField] private bool orthographicView = true;
+        [SerializeField] private float orthographicSize = 10.2f;
+        [SerializeField] private float perspectiveFieldOfView = 40f;
+
+        private void OnEnable()
+        {
+            ApplyView();
+        }
+
+        private void OnValidate()
+        {
+            ApplyView();
+        }
+
+        [ContextMenu("Apply Board View")]
+        public void ApplyView()
+        {
+            Camera boardCamera = GetComponent<Camera>();
+            boardCamera.orthographic = orthographicView;
+            boardCamera.orthographicSize = orthographicSize;
+            boardCamera.fieldOfView = perspectiveFieldOfView;
+
+            transform.position = viewPosition;
+            transform.LookAt(Vector3.zero, Vector3.up);
+        }
+    }
+}
