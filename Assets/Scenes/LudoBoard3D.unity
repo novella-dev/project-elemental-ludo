@@ -209,7 +209,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 53f16776f6fb452da849e7155b76bd4f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ElementalLudo.Board.LudoBoardViewCamera
-  viewPosition: {x: 10, y: -13, z: -24}
+  viewPosition: {x: 14, y: -18, z: -28}
+  viewUp: {x: 0, y: 0, z: -1}
   orthographicView: 0
   orthographicSize: 10
   perspectiveFieldOfView: 37
@@ -344,10 +345,31 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ElementalLudo.Board.LudoBoardOrbitCamera
   target: {x: 0, y: 0, z: 0}
+  topView:
+    positionOffset: {x: 0, y: 0, z: -24}
+    upDirection: {x: 0, y: 1, z: 0}
+    orthographic: 1
+    orthographicSize: 8.8
+    fieldOfView: 37
+  isometricView:
+    positionOffset: {x: 12, y: -12, z: -12}
+    upDirection: {x: 0, y: 0, z: -1}
+    orthographic: 1
+    orthographicSize: 8.4
+    fieldOfView: 37
+  threeDimensionalView:
+    positionOffset: {x: 14, y: -18, z: -28}
+    upDirection: {x: 0, y: 0, z: -1}
+    orthographic: 0
+    orthographicSize: 8.4
+    fieldOfView: 37
   rotationSpeed: 0.18
   zoomSpeed: 0.02
+  orthographicZoomSpeed: 0.006
   minimumDistance: 13
   maximumDistance: 45
+  minimumOrthographicSize: 5
+  maximumOrthographicSize: 14
   minimumTilt: 8
   maximumTilt: 70
 --- !u!1001 &938210891
