@@ -132,6 +132,7 @@ GameObject:
   - component: {fileID: 413493216}
   - component: {fileID: 413493215}
   - component: {fileID: 413493214}
+  - component: {fileID: 413493219}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -155,6 +156,25 @@ MonoBehaviour:
   orthographicView: 0
   orthographicSize: 10
   perspectiveFieldOfView: 37
+--- !u!114 &413493219
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 413493213}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cd07caa29a6f4171a67151486f92357c, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::ElementalLudo.Board.LudoBoardOrbitCamera
+  target: {x: 0, y: 0, z: 0}
+  rotationSpeed: 0.18
+  zoomSpeed: 0.02
+  minimumDistance: 13
+  maximumDistance: 45
+  minimumTilt: 8
+  maximumTilt: 70
 --- !u!114 &413493215
 MonoBehaviour:
   m_ObjectHideFlags: 0
