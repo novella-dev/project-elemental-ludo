@@ -8,6 +8,7 @@ namespace ElementalLudo.Board
     public sealed class LudoBoardViewCamera : MonoBehaviour
     {
         [SerializeField] private Vector3 viewPosition = new Vector3(10f, -11f, -15f);
+        [SerializeField] private Vector3 viewUp = Vector3.up;
         [SerializeField] private bool orthographicView = true;
         [SerializeField] private float orthographicSize = 10.2f;
         [SerializeField] private float perspectiveFieldOfView = 40f;
@@ -31,7 +32,10 @@ namespace ElementalLudo.Board
             boardCamera.fieldOfView = perspectiveFieldOfView;
 
             transform.position = viewPosition;
-            transform.LookAt(Vector3.zero, Vector3.up);
+            Vector3 upDirection = viewUp.sqrMagnitude > Mathf.Epsilon
+                ? viewUp.normalized
+                : Vector3.up;
+            transform.LookAt(Vector3.zero, upDirection);
         }
     }
 }

@@ -536,9 +536,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 53f16776f6fb452da849e7155b76bd4f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ElementalLudo.Board.LudoBoardViewCamera
-  viewPosition: {x: 10, y: -11, z: -15}
+  viewPosition: {x: 12, y: -12, z: -12}
+  viewUp: {x: 0, y: 0, z: -1}
   orthographicView: 1
-  orthographicSize: 10.2
+  orthographicSize: 8.4
   perspectiveFieldOfView: 40
 --- !u!114 &2058672969
 MonoBehaviour:
