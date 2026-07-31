@@ -172,4 +172,5 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ElementalLudo.DiceSystem.Dice
   value: 1
+  rollEnabled: 1
   visual: {fileID: 3404227497487245886}

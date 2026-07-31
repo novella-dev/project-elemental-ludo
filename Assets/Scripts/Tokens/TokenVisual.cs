@@ -37,6 +37,7 @@ namespace ElementalLudo.Tokens
         private Mesh tokenMesh;
         private MaterialPropertyBlock propertyBlock;
         private Color currentColor = NeutralColor;
+        private TokenInteractionState interactionState;
 
         private void OnEnable()
         {
@@ -135,6 +136,12 @@ namespace ElementalLudo.Tokens
             ApplyColor();
         }
 
+        public void SetInteractionState(TokenInteractionState state)
+        {
+            interactionState = state;
+            ApplyColor();
+        }
+
         private void ApplyColor()
         {
             MeshRenderer meshRenderer = GetComponent<MeshRenderer>();
@@ -145,7 +152,15 @@ namespace ElementalLudo.Tokens
 
             propertyBlock ??= new MaterialPropertyBlock();
             meshRenderer.GetPropertyBlock(propertyBlock);
-            propertyBlock.SetColor(BaseColorId, currentColor);
+            Color displayColor = interactionState switch
+            {
+                TokenInteractionState.Selectable =>
+                    Color.Lerp(currentColor, Color.white, 0.32f),
+                TokenInteractionState.Disabled =>
+                    Color.Lerp(currentColor, new Color(0.2f, 0.2f, 0.2f), 0.58f),
+                _ => currentColor
+            };
+            propertyBlock.SetColor(BaseColorId, displayColor);
             meshRenderer.SetPropertyBlock(propertyBlock);
         }
 

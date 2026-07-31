@@ -10,9 +10,11 @@ namespace ElementalLudo.DiceSystem
     {
         [Range(1, 6)]
         [SerializeField] private int value = 1;
+        [SerializeField] private bool rollEnabled = true;
         [SerializeField] private DiceVisual visual;
 
         public int Value => value;
+        public bool RollEnabled => rollEnabled;
         public event Action<int> Rolled;
 
         private void OnEnable()
@@ -29,8 +31,24 @@ namespace ElementalLudo.DiceSystem
         [ContextMenu("Roll Dice")]
         public void Roll()
         {
+            TryRoll();
+        }
+
+        public bool TryRoll()
+        {
+            if (!rollEnabled)
+            {
+                return false;
+            }
+
             SetValue(UnityEngine.Random.Range(1, 7));
             Rolled?.Invoke(value);
+            return true;
+        }
+
+        public void SetRollEnabled(bool enabled)
+        {
+            rollEnabled = enabled;
         }
 
         public void SetValue(int newValue)

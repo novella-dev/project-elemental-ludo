@@ -9,6 +9,13 @@ namespace ElementalLudo.Tokens
         Finished
     }
 
+    public enum TokenInteractionState
+    {
+        Normal,
+        Selectable,
+        Disabled
+    }
+
     [SelectionBase]
     [DisallowMultipleComponent]
     public sealed class Token : MonoBehaviour
@@ -23,6 +30,7 @@ namespace ElementalLudo.Tokens
         public PlayerStyle OwnerStyle => ownerStyle;
         public TokenState State => state;
         public int RouteIndex => routeIndex;
+        public TokenInteractionState InteractionState { get; private set; }
 
         private void OnEnable()
         {
@@ -55,10 +63,19 @@ namespace ElementalLudo.Tokens
             routeIndex = -1;
         }
 
-        public void MarkFinished()
+        public void MarkFinished(int finalRouteIndex)
         {
             state = TokenState.Finished;
-            routeIndex = -1;
+            routeIndex = Mathf.Max(0, finalRouteIndex);
+        }
+
+        public void SetInteractionState(TokenInteractionState interactionState)
+        {
+            InteractionState = interactionState;
+            if (visual != null)
+            {
+                visual.SetInteractionState(interactionState);
+            }
         }
 
         private void RefreshVisual()
@@ -81,6 +98,8 @@ namespace ElementalLudo.Tokens
             {
                 visual.UseNeutralColor();
             }
+
+            visual.SetInteractionState(InteractionState);
         }
     }
 }

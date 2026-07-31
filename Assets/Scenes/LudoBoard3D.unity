@@ -325,8 +325,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 413493213}
   serializedVersion: 2
-  m_LocalRotation: {x: -0.22529127, y: -0.19086981, z: -0.04505825, w: 0.95434916}
-  m_LocalPosition: {x: 10, y: -13, z: -24}
+  m_LocalRotation: {x: -0.31698167, y: -0.10875886, z: 0.30577016, w: 0.8911783}
+  m_LocalPosition: {x: 14, y: -18, z: -28}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -495,6 +495,63 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 8e93f07876867284ba7c053148b60446, type: 3}
+--- !u!1001 &1512126157
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 5958769230818096993, guid: b317ab3ae48812d46adad7a356bd9b4f, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5958769230818096993, guid: b317ab3ae48812d46adad7a356bd9b4f, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5958769230818096993, guid: b317ab3ae48812d46adad7a356bd9b4f, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5958769230818096993, guid: b317ab3ae48812d46adad7a356bd9b4f, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 5958769230818096993, guid: b317ab3ae48812d46adad7a356bd9b4f, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5958769230818096993, guid: b317ab3ae48812d46adad7a356bd9b4f, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5958769230818096993, guid: b317ab3ae48812d46adad7a356bd9b4f, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5958769230818096993, guid: b317ab3ae48812d46adad7a356bd9b4f, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5958769230818096993, guid: b317ab3ae48812d46adad7a356bd9b4f, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5958769230818096993, guid: b317ab3ae48812d46adad7a356bd9b4f, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7311671939316891308, guid: b317ab3ae48812d46adad7a356bd9b4f, type: 3}
+      propertyPath: m_Name
+      value: Ludo Game
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: b317ab3ae48812d46adad7a356bd9b4f, type: 3}
 --- !u!1 &1747368659
 GameObject:
   m_ObjectHideFlags: 0
@@ -711,3 +768,4 @@ SceneRoots:
   - {fileID: 1915798948}
   - {fileID: 938210891}
   - {fileID: 357071127}
+  - {fileID: 1512126157}
