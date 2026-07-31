@@ -12,7 +12,8 @@ namespace ElementalLudo.Gameplay
     {
         AwaitingRoll,
         AwaitingAction,
-        Resolving
+        Resolving,
+        GameOver
     }
 
     public enum LudoActionType
@@ -92,6 +93,7 @@ namespace ElementalLudo.Gameplay
         private int rolledValue;
         private bool actionPerformed;
         private bool initialized;
+        private PlayerStyle winner;
         private string statusMessage = string.Empty;
         private LudoTurnPhase phase = LudoTurnPhase.AwaitingRoll;
 
@@ -101,6 +103,8 @@ namespace ElementalLudo.Gameplay
         public int RolledValue => rolledValue;
         public LudoTurnPhase Phase => phase;
         public IReadOnlyList<LudoLegalAction> LegalActions => legalActions;
+        public PlayerStyle Winner => winner;
+        public bool IsGameOver => winner != null;
 
         private void Awake()
         {
@@ -187,6 +191,7 @@ namespace ElementalLudo.Gameplay
             activePlayerIndex = 0;
             rolledValue = 0;
             actionPerformed = false;
+            winner = null;
             legalActions.Clear();
             phase = LudoTurnPhase.AwaitingRoll;
             dice.SetRollEnabled(true);
@@ -443,6 +448,12 @@ namespace ElementalLudo.Gameplay
                 }
             }
 
+            if (LudoMovementRules.HasWon(player.Tokens))
+            {
+                EndGame(player);
+                yield break;
+            }
+
             EndTurn();
         }
 
@@ -493,6 +504,19 @@ namespace ElementalLudo.Gameplay
             SetTokenInteractionStates(false, true);
             statusMessage =
                 $"{DisplayName(ActivePlayer.PlayerId)} player's turn. Roll the die.";
+        }
+
+        private void EndGame(PlayerRuntime winningPlayer)
+        {
+            winner = winningPlayer.Style;
+            legalActions.Clear();
+            rolledValue = 0;
+            actionPerformed = true;
+            phase = LudoTurnPhase.GameOver;
+            dice.SetRollEnabled(false);
+            SetTokenInteractionStates(false, true);
+            statusMessage =
+                $"{DisplayName(winner.PlayerId)} wins! All four tokens reached the goal.";
         }
 
         private Vector3 GetRoutePosition(
@@ -616,7 +640,17 @@ namespace ElementalLudo.Gameplay
             GUILayout.Label(statusMessage);
             GUILayout.Space(8f);
 
-            if (phase == LudoTurnPhase.AwaitingRoll)
+            if (phase == LudoTurnPhase.GameOver)
+            {
+                GUILayout.Label(
+                    $"Winner: {DisplayName(winner.PlayerId)}",
+                    GUI.skin.label);
+                if (GUILayout.Button("Play Again"))
+                {
+                    RestartGame();
+                }
+            }
+            else if (phase == LudoTurnPhase.AwaitingRoll)
             {
                 if (GUILayout.Button("Roll Dice  (Space)"))
                 {

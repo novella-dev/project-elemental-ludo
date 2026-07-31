@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using ElementalLudo.Tokens;
 
 namespace ElementalLudo.Gameplay
@@ -5,6 +6,7 @@ namespace ElementalLudo.Gameplay
     public static class LudoMovementRules
     {
         public const int HomeExitRoll = 5;
+        public const int TokensRequiredToWin = 4;
 
         public static bool CanLeaveHome(TokenState state, int rolledValue)
         {
@@ -35,6 +37,24 @@ namespace ElementalLudo.Gameplay
             }
 
             destinationRouteIndex = candidate;
+            return true;
+        }
+
+        public static bool HasWon(IReadOnlyList<Token> tokens)
+        {
+            if (tokens == null || tokens.Count != TokensRequiredToWin)
+            {
+                return false;
+            }
+
+            foreach (Token token in tokens)
+            {
+                if (token == null || token.State != TokenState.Finished)
+                {
+                    return false;
+                }
+            }
+
             return true;
         }
     }
