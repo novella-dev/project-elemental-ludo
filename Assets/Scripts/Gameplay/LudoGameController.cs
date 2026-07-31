@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using ElementalLudo.Board;
 using ElementalLudo.DiceSystem;
 using ElementalLudo.Tokens;
 using UnityEngine;
@@ -525,14 +526,18 @@ namespace ElementalLudo.Gameplay
             int routeIndex)
         {
             Vector2Int cell = player.Route[routeIndex];
+            Vector2 worldCell = LudoBoardLayout.ToWorld(cell);
             Vector3 position = new Vector3(
-                cell.x,
-                cell.y,
+                worldCell.x,
+                worldCell.y,
                 homePositions[token].z);
 
             if (routeIndex == player.Route.Length - 1)
             {
-                position += GetGoalOffset(player.Style.PlayerId, token.TokenId);
+                Vector3 logicalOffset =
+                    GetGoalOffset(player.Style.PlayerId, token.TokenId);
+                Vector2 worldOffset = LudoBoardLayout.ToWorld(logicalOffset);
+                position += new Vector3(worldOffset.x, worldOffset.y, 0f);
             }
 
             return position;

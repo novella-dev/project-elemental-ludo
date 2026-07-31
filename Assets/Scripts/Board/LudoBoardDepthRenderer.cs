@@ -233,8 +233,8 @@ namespace ElementalLudo.Board
 
         private void DrawMarker(Vector2 center, Color color)
         {
-            AddCylinder(
-                center,
+            AddWorldCylinder(
+                LudoBoardLayout.ToWorld(center),
                 0.285f,
                 -0.275f,
                 -0.195f,
@@ -277,14 +277,14 @@ namespace ElementalLudo.Board
             Color frontColor,
             Color sideColor)
         {
-            Vector3 frontBottomLeft = new Vector3(xMin, yMin, frontDepth);
-            Vector3 frontBottomRight = new Vector3(xMax, yMin, frontDepth);
-            Vector3 frontTopRight = new Vector3(xMax, yMax, frontDepth);
-            Vector3 frontTopLeft = new Vector3(xMin, yMax, frontDepth);
-            Vector3 backBottomLeft = new Vector3(xMin, yMin, backDepth);
-            Vector3 backBottomRight = new Vector3(xMax, yMin, backDepth);
-            Vector3 backTopRight = new Vector3(xMax, yMax, backDepth);
-            Vector3 backTopLeft = new Vector3(xMin, yMax, backDepth);
+            Vector3 frontBottomLeft = ToVector3(new Vector2(xMin, yMin), frontDepth);
+            Vector3 frontBottomRight = ToVector3(new Vector2(xMax, yMin), frontDepth);
+            Vector3 frontTopRight = ToVector3(new Vector2(xMax, yMax), frontDepth);
+            Vector3 frontTopLeft = ToVector3(new Vector2(xMin, yMax), frontDepth);
+            Vector3 backBottomLeft = ToVector3(new Vector2(xMin, yMin), backDepth);
+            Vector3 backBottomRight = ToVector3(new Vector2(xMax, yMin), backDepth);
+            Vector3 backTopRight = ToVector3(new Vector2(xMax, yMax), backDepth);
+            Vector3 backTopLeft = ToVector3(new Vector2(xMin, yMax), backDepth);
 
             AddQuad(frontBottomLeft, frontBottomRight, frontTopRight, frontTopLeft, frontColor);
             AddQuad(frontBottomRight, backBottomRight, backTopRight, frontTopRight, sideColor);
@@ -315,7 +315,7 @@ namespace ElementalLudo.Board
             AddQuad(frontC, backC, backA, frontA, Shade(sideColor, 0.16f));
         }
 
-        private void AddCylinder(
+        private void AddWorldCylinder(
             Vector2 center,
             float radius,
             float frontDepth,
@@ -323,7 +323,7 @@ namespace ElementalLudo.Board
             Color frontColor,
             Color sideColor)
         {
-            Vector3 frontCenter = ToVector3(center, frontDepth);
+            Vector3 frontCenter = new Vector3(center.x, center.y, frontDepth);
 
             for (int segment = 0; segment < CircleSegments; segment++)
             {
@@ -331,10 +331,22 @@ namespace ElementalLudo.Board
                 float endAngle = Mathf.PI * 2f * (segment + 1) / CircleSegments;
                 Vector2 startDirection = new Vector2(Mathf.Cos(startAngle), Mathf.Sin(startAngle));
                 Vector2 endDirection = new Vector2(Mathf.Cos(endAngle), Mathf.Sin(endAngle));
-                Vector3 frontStart = ToVector3(center + startDirection * radius, frontDepth);
-                Vector3 frontEnd = ToVector3(center + endDirection * radius, frontDepth);
-                Vector3 backStart = ToVector3(center + startDirection * radius, backDepth);
-                Vector3 backEnd = ToVector3(center + endDirection * radius, backDepth);
+                Vector3 frontStart = new Vector3(
+                    center.x + startDirection.x * radius,
+                    center.y + startDirection.y * radius,
+                    frontDepth);
+                Vector3 frontEnd = new Vector3(
+                    center.x + endDirection.x * radius,
+                    center.y + endDirection.y * radius,
+                    frontDepth);
+                Vector3 backStart = new Vector3(
+                    center.x + startDirection.x * radius,
+                    center.y + startDirection.y * radius,
+                    backDepth);
+                Vector3 backEnd = new Vector3(
+                    center.x + endDirection.x * radius,
+                    center.y + endDirection.y * radius,
+                    backDepth);
 
                 AddTriangle(frontCenter, frontStart, frontEnd, frontColor);
                 AddQuad(frontStart, backStart, backEnd, frontEnd, sideColor);
@@ -427,7 +439,7 @@ namespace ElementalLudo.Board
 
         private static Vector3 ToVector3(Vector2 point, float depth)
         {
-            return new Vector3(point.x, point.y, depth);
+            return LudoBoardLayout.ToWorld(point, depth);
         }
 
         private static Color Lighten(Color color)

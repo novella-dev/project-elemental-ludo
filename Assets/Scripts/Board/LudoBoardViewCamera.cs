@@ -7,10 +7,10 @@ namespace ElementalLudo.Board
     [RequireComponent(typeof(Camera))]
     public sealed class LudoBoardViewCamera : MonoBehaviour
     {
-        [SerializeField] private Vector3 viewPosition = new Vector3(10f, -11f, -15f);
+        [SerializeField] private Vector3 viewPosition = new Vector3(12f, -13f, -18f);
         [SerializeField] private Vector3 viewUp = Vector3.up;
         [SerializeField] private bool orthographicView = true;
-        [SerializeField] private float orthographicSize = 10.2f;
+        [SerializeField] private float orthographicSize = 12.2f;
         [SerializeField] private float perspectiveFieldOfView = 40f;
 
         private void OnEnable()

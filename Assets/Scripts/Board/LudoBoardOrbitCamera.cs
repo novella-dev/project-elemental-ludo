@@ -44,24 +44,24 @@ namespace ElementalLudo.Board
 
         [Header("View Presets")]
         [SerializeField] private CameraViewPreset topView = new CameraViewPreset(
-            new Vector3(0f, 0f, -24f),
+            new Vector3(0f, 0f, -29f),
             Vector3.up,
             true,
-            8.8f,
+            10.5f,
             37f);
         [SerializeField] private CameraViewPreset isometricView =
             new CameraViewPreset(
-                new Vector3(12f, -12f, -12f),
+                new Vector3(14.5f, -14.5f, -14.5f),
                 Vector3.back,
                 true,
-                8.4f,
+                10.2f,
                 37f);
         [SerializeField] private CameraViewPreset threeDimensionalView =
             new CameraViewPreset(
-                new Vector3(14f, -18f, -28f),
+                new Vector3(17f, -22f, -34f),
                 Vector3.back,
                 false,
-                8.4f,
+                10.2f,
                 37f);
 
         [Header("View Transition")]
@@ -76,10 +76,10 @@ namespace ElementalLudo.Board
         [SerializeField] private float rotationSpeed = 0.18f;
         [SerializeField] private float zoomSpeed = 0.02f;
         [SerializeField] private float orthographicZoomSpeed = 0.006f;
-        [SerializeField] private float minimumDistance = 13f;
-        [SerializeField] private float maximumDistance = 45f;
-        [SerializeField] private float minimumOrthographicSize = 5f;
-        [SerializeField] private float maximumOrthographicSize = 14f;
+        [SerializeField] private float minimumDistance = 16f;
+        [SerializeField] private float maximumDistance = 54f;
+        [SerializeField] private float minimumOrthographicSize = 6f;
+        [SerializeField] private float maximumOrthographicSize = 18f;
         [SerializeField] private float minimumTilt = 8f;
         [SerializeField] private float maximumTilt = 70f;
 

@@ -260,8 +260,14 @@ namespace ElementalLudo.Board
 
         private void DrawMarker(Vector2 center, Color color)
         {
-            AddCircle(center, 0.29f, color, -0.055f);
-            AddRing(center, 0.30f, 0.275f, new Color(GridColor.r, GridColor.g, GridColor.b, 0.32f), -0.06f);
+            Vector2 worldCenter = LudoBoardLayout.ToWorld(center);
+            AddWorldCircle(worldCenter, 0.29f, color, -0.055f);
+            AddWorldRing(
+                worldCenter,
+                0.30f,
+                0.275f,
+                new Color(GridColor.r, GridColor.g, GridColor.b, 0.32f),
+                -0.06f);
         }
 
         private void DrawHome(Vector2 center, Color homeColor)
@@ -281,10 +287,10 @@ namespace ElementalLudo.Board
         private void AddRect(float xMin, float yMin, float xMax, float yMax, Color color, float depth)
         {
             int firstVertex = vertices.Count;
-            vertices.Add(new Vector3(xMin, yMin, depth));
-            vertices.Add(new Vector3(xMax, yMin, depth));
-            vertices.Add(new Vector3(xMax, yMax, depth));
-            vertices.Add(new Vector3(xMin, yMax, depth));
+            vertices.Add(ToVector3(new Vector2(xMin, yMin), depth));
+            vertices.Add(ToVector3(new Vector2(xMax, yMin), depth));
+            vertices.Add(ToVector3(new Vector2(xMax, yMax), depth));
+            vertices.Add(ToVector3(new Vector2(xMin, yMax), depth));
             AddColors(color, 4);
 
             triangles.Add(firstVertex);
@@ -298,9 +304,9 @@ namespace ElementalLudo.Board
         private void AddTriangle(Vector2 a, Vector2 b, Vector2 c, Color color, float depth)
         {
             int firstVertex = vertices.Count;
-            vertices.Add(new Vector3(a.x, a.y, depth));
-            vertices.Add(new Vector3(b.x, b.y, depth));
-            vertices.Add(new Vector3(c.x, c.y, depth));
+            vertices.Add(ToVector3(a, depth));
+            vertices.Add(ToVector3(b, depth));
+            vertices.Add(ToVector3(c, depth));
             AddColors(color, 3);
 
             triangles.Add(firstVertex);
@@ -319,10 +325,10 @@ namespace ElementalLudo.Board
             Vector2 offset = new Vector2(-direction.y, direction.x).normalized * (width * 0.5f);
             int firstVertex = vertices.Count;
 
-            vertices.Add(new Vector3(start.x - offset.x, start.y - offset.y, depth));
-            vertices.Add(new Vector3(end.x - offset.x, end.y - offset.y, depth));
-            vertices.Add(new Vector3(end.x + offset.x, end.y + offset.y, depth));
-            vertices.Add(new Vector3(start.x + offset.x, start.y + offset.y, depth));
+            vertices.Add(ToVector3(start - offset, depth));
+            vertices.Add(ToVector3(end - offset, depth));
+            vertices.Add(ToVector3(end + offset, depth));
+            vertices.Add(ToVector3(start + offset, depth));
             AddColors(color, 4);
 
             triangles.Add(firstVertex);
@@ -379,6 +385,82 @@ namespace ElementalLudo.Board
             }
         }
 
+        private void AddWorldCircle(Vector2 center, float radius, Color color, float depth)
+        {
+            for (int segment = 0; segment < CircleSegments; segment++)
+            {
+                float startAngle = Mathf.PI * 2f * segment / CircleSegments;
+                float endAngle = Mathf.PI * 2f * (segment + 1) / CircleSegments;
+
+                AddWorldTriangle(
+                    center,
+                    center + new Vector2(Mathf.Cos(startAngle), Mathf.Sin(startAngle)) * radius,
+                    center + new Vector2(Mathf.Cos(endAngle), Mathf.Sin(endAngle)) * radius,
+                    color,
+                    depth);
+            }
+        }
+
+        private void AddWorldRing(
+            Vector2 center,
+            float outerRadius,
+            float innerRadius,
+            Color color,
+            float depth)
+        {
+            for (int segment = 0; segment < CircleSegments; segment++)
+            {
+                float startAngle = Mathf.PI * 2f * segment / CircleSegments;
+                float endAngle = Mathf.PI * 2f * (segment + 1) / CircleSegments;
+                Vector2 startDirection = new Vector2(Mathf.Cos(startAngle), Mathf.Sin(startAngle));
+                Vector2 endDirection = new Vector2(Mathf.Cos(endAngle), Mathf.Sin(endAngle));
+
+                int firstVertex = vertices.Count;
+                vertices.Add(new Vector3(
+                    center.x + startDirection.x * innerRadius,
+                    center.y + startDirection.y * innerRadius,
+                    depth));
+                vertices.Add(new Vector3(
+                    center.x + startDirection.x * outerRadius,
+                    center.y + startDirection.y * outerRadius,
+                    depth));
+                vertices.Add(new Vector3(
+                    center.x + endDirection.x * outerRadius,
+                    center.y + endDirection.y * outerRadius,
+                    depth));
+                vertices.Add(new Vector3(
+                    center.x + endDirection.x * innerRadius,
+                    center.y + endDirection.y * innerRadius,
+                    depth));
+                AddColors(color, 4);
+
+                triangles.Add(firstVertex);
+                triangles.Add(firstVertex + 2);
+                triangles.Add(firstVertex + 1);
+                triangles.Add(firstVertex);
+                triangles.Add(firstVertex + 3);
+                triangles.Add(firstVertex + 2);
+            }
+        }
+
+        private void AddWorldTriangle(
+            Vector2 a,
+            Vector2 b,
+            Vector2 c,
+            Color color,
+            float depth)
+        {
+            int firstVertex = vertices.Count;
+            vertices.Add(new Vector3(a.x, a.y, depth));
+            vertices.Add(new Vector3(b.x, b.y, depth));
+            vertices.Add(new Vector3(c.x, c.y, depth));
+            AddColors(color, 3);
+
+            triangles.Add(firstVertex);
+            triangles.Add(firstVertex + 2);
+            triangles.Add(firstVertex + 1);
+        }
+
         private void AddColors(Color color, int count)
         {
             for (int index = 0; index < count; index++)
@@ -389,7 +471,7 @@ namespace ElementalLudo.Board
 
         private static Vector3 ToVector3(Vector2 point, float depth)
         {
-            return new Vector3(point.x, point.y, depth);
+            return LudoBoardLayout.ToWorld(point, depth);
         }
 
         private static void DestroyGeneratedObject(Object target)

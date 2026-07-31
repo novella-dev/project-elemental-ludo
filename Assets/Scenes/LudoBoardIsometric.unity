@@ -129,11 +129,11 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 3170285935542991094, guid: ad712fc32f46d8945bec78883d86c50c, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 2.25
+      value: 3.75
       objectReference: {fileID: 0}
     - target: {fileID: 3170285935542991094, guid: ad712fc32f46d8945bec78883d86c50c, type: 3}
       propertyPath: m_LocalPosition.y
-      value: -2.25
+      value: -3.75
       objectReference: {fileID: 0}
     - target: {fileID: 3170285935542991094, guid: ad712fc32f46d8945bec78883d86c50c, type: 3}
       propertyPath: m_LocalPosition.z
@@ -536,10 +536,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 53f16776f6fb452da849e7155b76bd4f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ElementalLudo.Board.LudoBoardViewCamera
-  viewPosition: {x: 12, y: -12, z: -12}
+  viewPosition: {x: 14.5, y: -14.5, z: -14.5}
   viewUp: {x: 0, y: 0, z: -1}
   orthographicView: 1
-  orthographicSize: 8.4
+  orthographicSize: 12.2
   perspectiveFieldOfView: 40
 --- !u!114 &2058672969
 MonoBehaviour:
@@ -628,7 +628,7 @@ Camera:
   far clip plane: 100
   field of view: 40
   orthographic: 1
-  orthographic size: 10.2
+  orthographic size: 12.2
   m_Depth: 0
   m_CullingMask:
     serializedVersion: 2
