@@ -102,7 +102,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1e58df4819f045139ba7cdbe9c8cf8f6, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ElementalLudo.DiceSystem.DiceVisual
 --- !u!1 &3840754529593871221
 GameObject:
@@ -169,7 +169,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 28ac676ec92c490894047e4ee3f0f72c, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ElementalLudo.DiceSystem.Dice
   value: 1
   visual: {fileID: 3404227497487245886}
