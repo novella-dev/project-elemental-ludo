@@ -2,6 +2,13 @@ using UnityEngine;
 
 namespace ElementalLudo.Tokens
 {
+    public enum TokenModelMaterialMode
+    {
+        Preserve,
+        Opaque,
+        AlphaClip
+    }
+
     [CreateAssetMenu(
         fileName = "PlayerStyle",
         menuName = "Elemental Ludo/Player Style")]
@@ -16,6 +23,9 @@ namespace ElementalLudo.Tokens
         [SerializeField, Min(0.01f)] private float tokenModelFootprint = 0.68f;
         [SerializeField, Min(0.01f)] private float tokenModelHeight = 0.98f;
         [SerializeField] private Color tokenModelTint = Color.white;
+        [Tooltip("Runtime material treatment used to keep the model visible from every camera angle.")]
+        [SerializeField]
+        private TokenModelMaterialMode tokenModelMaterialMode;
 
         public string PlayerId => playerId;
         public Color TokenColor => tokenColor;
@@ -24,6 +34,8 @@ namespace ElementalLudo.Tokens
         public float TokenModelFootprint => tokenModelFootprint;
         public float TokenModelHeight => tokenModelHeight;
         public Color TokenModelTint => tokenModelTint;
+        public TokenModelMaterialMode TokenModelMaterialMode =>
+            tokenModelMaterialMode;
 
         public void Configure(string id, Color color)
         {

@@ -366,8 +366,8 @@ MonoBehaviour:
   transitionDuration: 0.75
   transitionFramingPadding: 0.2
   rotationSpeed: 0.18
-  zoomSpeed: 0.02
-  orthographicZoomSpeed: 0.006
+  zoomSpeed: 10
+  orthographicZoomSpeed: 3
   minimumDistance: 16
   maximumDistance: 54
   minimumOrthographicSize: 6

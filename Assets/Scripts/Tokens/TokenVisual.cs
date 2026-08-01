@@ -16,10 +16,31 @@ namespace ElementalLudo.Tokens
             "Fire Token (import manually)";
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
         private static readonly int ColorId = Shader.PropertyToID("_Color");
+        private static readonly int SurfaceId = Shader.PropertyToID("_Surface");
+        private static readonly int ZWriteId = Shader.PropertyToID("_ZWrite");
+        private static readonly int SrcBlendId = Shader.PropertyToID("_SrcBlend");
+        private static readonly int DstBlendId = Shader.PropertyToID("_DstBlend");
+        private static readonly int AlphaClipId = Shader.PropertyToID("_AlphaClip");
+        private static readonly int AlphaCutoffId =
+            Shader.PropertyToID("alphaCutoff");
+        private static readonly int CullId = Shader.PropertyToID("_Cull");
+        private static readonly int CullModeId = Shader.PropertyToID("_CullMode");
+        private static readonly int BuiltInCullModeId =
+            Shader.PropertyToID("_BUILTIN_CullMode");
+        private static readonly int TransmissionFactorId =
+            Shader.PropertyToID("transmissionFactor");
         private static readonly Color NeutralColor =
             new Color32(190, 193, 193, 255);
         private static readonly HashSet<int> CleanedSceneHandles =
             new HashSet<int>();
+
+        [SerializeField, Min(0f)]
+        [Tooltip("Rotation speed around the token's own vertical axis. Set to zero to disable spinning.")]
+        private float idleSpinSpeed = 90f;
+
+        [SerializeField, Range(0f, 20f)]
+        [Tooltip("Small spinning-top lean that keeps rotation visible on symmetrical token models.")]
+        private float idleSpinTilt = 8f;
 
         private static readonly Vector2[] Profile =
         {
@@ -50,6 +71,12 @@ namespace ElementalLudo.Tokens
         private GameObject customModelPrefab;
         private GameObject customModelInstance;
         private Renderer[] customModelRenderers;
+        private TokenModelMaterialMode customModelMaterialMode;
+        private readonly List<Material> customModelMaterials =
+            new List<Material>();
+        private Quaternion idleSpinBaseRotation;
+        private float idleSpinAngle;
+        private bool idleSpinInitialized;
 
         private MeshRenderer ProceduralRenderer => GetComponent<MeshRenderer>();
 
@@ -61,6 +88,7 @@ namespace ElementalLudo.Tokens
 
         private void OnEnable()
         {
+            InitializeIdleSpin();
             RemoveOrphanedSceneModels();
             RebuildMesh();
             ApplyColor();
@@ -70,6 +98,48 @@ namespace ElementalLudo.Tokens
         {
             RebuildMesh();
             ApplyColor();
+        }
+
+        private void Update()
+        {
+            if (!Application.isPlaying || idleSpinSpeed <= 0f)
+            {
+                return;
+            }
+
+            if (!idleSpinInitialized)
+            {
+                InitializeIdleSpin();
+            }
+
+            idleSpinAngle = Mathf.Repeat(
+                idleSpinAngle + idleSpinSpeed * Time.deltaTime,
+                360f);
+            Quaternion spin = Quaternion.AngleAxis(
+                idleSpinAngle,
+                Vector3.forward);
+            Quaternion tilt = Quaternion.AngleAxis(
+                idleSpinTilt,
+                Vector3.right);
+            transform.localRotation = idleSpinBaseRotation * spin * tilt;
+        }
+
+        private void OnDisable()
+        {
+            if (!idleSpinInitialized)
+            {
+                return;
+            }
+
+            transform.localRotation = idleSpinBaseRotation;
+            idleSpinInitialized = false;
+        }
+
+        private void InitializeIdleSpin()
+        {
+            idleSpinBaseRotation = transform.localRotation;
+            idleSpinAngle = 0f;
+            idleSpinInitialized = true;
         }
 
         [ContextMenu("Rebuild Token Mesh")]
@@ -152,7 +222,12 @@ namespace ElementalLudo.Tokens
             {
                 currentColor = NeutralColor;
                 customModelTint = Color.white;
-                SetCustomModel(null, Vector3.zero, 1f, 1f);
+                SetCustomModel(
+                    null,
+                    Vector3.zero,
+                    1f,
+                    1f,
+                    TokenModelMaterialMode.Preserve);
             }
             else
             {
@@ -162,7 +237,8 @@ namespace ElementalLudo.Tokens
                     style.TokenModel,
                     style.TokenModelEulerAngles,
                     style.TokenModelFootprint,
-                    style.TokenModelHeight);
+                    style.TokenModelHeight,
+                    style.TokenModelMaterialMode);
             }
 
             ApplyColor();
@@ -190,14 +266,17 @@ namespace ElementalLudo.Tokens
             GameObject modelPrefab,
             Vector3 eulerAngles,
             float targetFootprint,
-            float targetHeight)
+            float targetHeight,
+            TokenModelMaterialMode materialMode)
         {
             if (!Application.isPlaying)
             {
                 return;
             }
 
-            if (customModelPrefab == modelPrefab && customModelInstance != null)
+            if (customModelPrefab == modelPrefab &&
+                customModelInstance != null &&
+                customModelMaterialMode == materialMode)
             {
                 customModelInstance.transform.localPosition = Vector3.zero;
                 customModelInstance.transform.localRotation =
@@ -211,6 +290,7 @@ namespace ElementalLudo.Tokens
             DestroyCustomModelInstance();
             RemoveOrphanedModelInstances();
             customModelPrefab = modelPrefab;
+            customModelMaterialMode = materialMode;
             ProceduralRenderer.enabled = modelPrefab == null;
 
             if (modelPrefab == null)
@@ -230,8 +310,130 @@ namespace ElementalLudo.Tokens
             DisableModelColliders(customModelInstance);
             customModelRenderers =
                 customModelInstance.GetComponentsInChildren<Renderer>(true);
+            if (materialMode != TokenModelMaterialMode.Preserve)
+            {
+                ConfigureCustomModelMaterials(materialMode);
+            }
+
             FitCustomModel(targetFootprint, targetHeight);
             DisableUnownedCopiesOfCustomModel();
+        }
+
+        private void ConfigureCustomModelMaterials(
+            TokenModelMaterialMode materialMode)
+        {
+            if (customModelRenderers == null)
+            {
+                return;
+            }
+
+            foreach (Renderer modelRenderer in customModelRenderers)
+            {
+                Material[] sourceMaterials = modelRenderer.sharedMaterials;
+                Material[] runtimeMaterials =
+                    new Material[sourceMaterials.Length];
+                for (int materialIndex = 0;
+                     materialIndex < sourceMaterials.Length;
+                     materialIndex++)
+                {
+                    Material sourceMaterial = sourceMaterials[materialIndex];
+                    if (sourceMaterial == null)
+                    {
+                        continue;
+                    }
+
+                    Material runtimeMaterial = new Material(sourceMaterial)
+                    {
+                        name = $"{sourceMaterial.name} ({materialMode} Token)",
+                        hideFlags = HideFlags.DontSave
+                    };
+                    if (materialMode == TokenModelMaterialMode.AlphaClip)
+                    {
+                        ConfigureAlphaClipMaterial(runtimeMaterial);
+                    }
+                    else
+                    {
+                        ConfigureOpaqueMaterial(runtimeMaterial);
+                    }
+
+                    ConfigureDoubleSidedMaterial(runtimeMaterial);
+                    runtimeMaterials[materialIndex] = runtimeMaterial;
+                    customModelMaterials.Add(runtimeMaterial);
+                }
+
+                modelRenderer.sharedMaterials = runtimeMaterials;
+            }
+        }
+
+        private static void ConfigureOpaqueMaterial(Material material)
+        {
+            material.DisableKeyword("_TRANSMISSION");
+            material.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.DisableKeyword("_ALPHATEST_ON");
+            material.DisableKeyword("_ALPHABLEND_ON");
+            material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            material.SetOverrideTag("RenderType", "Opaque");
+            SetMaterialFloatIfPresent(material, TransmissionFactorId, 0f);
+            SetMaterialFloatIfPresent(material, SurfaceId, 0f);
+            SetMaterialFloatIfPresent(material, AlphaClipId, 0f);
+            SetMaterialFloatIfPresent(material, ZWriteId, 1f);
+            SetMaterialFloatIfPresent(
+                material,
+                SrcBlendId,
+                (float)BlendMode.One);
+            SetMaterialFloatIfPresent(
+                material,
+                DstBlendId,
+                (float)BlendMode.Zero);
+            material.SetShaderPassEnabled("DepthOnly", true);
+            material.renderQueue = (int)RenderQueue.Geometry;
+        }
+
+        private static void ConfigureAlphaClipMaterial(Material material)
+        {
+            material.DisableKeyword("_TRANSMISSION");
+            material.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.DisableKeyword("_ALPHABLEND_ON");
+            material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            material.EnableKeyword("_ALPHATEST_ON");
+            material.SetOverrideTag("RenderType", "TransparentCutout");
+            SetMaterialFloatIfPresent(material, TransmissionFactorId, 0f);
+            SetMaterialFloatIfPresent(material, SurfaceId, 0f);
+            SetMaterialFloatIfPresent(material, AlphaClipId, 1f);
+            SetMaterialFloatIfPresent(material, AlphaCutoffId, 0.1f);
+            SetMaterialFloatIfPresent(material, ZWriteId, 1f);
+            SetMaterialFloatIfPresent(
+                material,
+                SrcBlendId,
+                (float)BlendMode.One);
+            SetMaterialFloatIfPresent(
+                material,
+                DstBlendId,
+                (float)BlendMode.Zero);
+            material.SetShaderPassEnabled("DepthOnly", true);
+            material.renderQueue = (int)RenderQueue.AlphaTest;
+        }
+
+        private static void ConfigureDoubleSidedMaterial(Material material)
+        {
+            SetMaterialFloatIfPresent(material, CullId, (float)CullMode.Off);
+            SetMaterialFloatIfPresent(material, CullModeId, (float)CullMode.Off);
+            SetMaterialFloatIfPresent(
+                material,
+                BuiltInCullModeId,
+                (float)CullMode.Off);
+            material.doubleSidedGI = true;
+        }
+
+        private static void SetMaterialFloatIfPresent(
+            Material material,
+            int propertyId,
+            float value)
+        {
+            if (material.HasProperty(propertyId))
+            {
+                material.SetFloat(propertyId, value);
+            }
         }
 
         private void FitCustomModel(float targetFootprint, float targetHeight)
@@ -543,8 +745,16 @@ namespace ElementalLudo.Tokens
                 DestroyGeneratedObject(customModelInstance);
             }
 
+            foreach (Material customMaterial in customModelMaterials)
+            {
+                DestroyGeneratedObject(customMaterial);
+            }
+
+            customModelMaterials.Clear();
+
             customModelInstance = null;
             customModelRenderers = null;
+            customModelMaterialMode = TokenModelMaterialMode.Preserve;
         }
 
         private static void DestroyGeneratedObject(Object target)

@@ -217,10 +217,11 @@ namespace ElementalLudo.Board
             DrawCenter(lineWidth);
             DrawSafeCells();
 
-            DrawHome(new Vector2(-4.5f, 4.5f), Red);
-            DrawHome(new Vector2(4.5f, 4.5f), Blue);
-            DrawHome(new Vector2(-4.5f, -4.5f), Green);
-            DrawHome(new Vector2(4.5f, -4.5f), Yellow);
+            float homeCenter = LudoBoardLayout.HomeLogicalCenter;
+            DrawHome(new Vector2(-homeCenter, homeCenter), Red);
+            DrawHome(new Vector2(homeCenter, homeCenter), Blue);
+            DrawHome(new Vector2(-homeCenter, -homeCenter), Green);
+            DrawHome(new Vector2(homeCenter, -homeCenter), Yellow);
 
             AddLine(
                 new Vector2(-outerEdge, -outerEdge),
@@ -365,11 +366,12 @@ namespace ElementalLudo.Board
 
         private void DrawHome(Vector2 center, Color homeColor)
         {
-            AddCircle(center, 2.04f, GridColor, 0.015f);
-            AddCircle(center, 1.98f, homeColor, 0.005f);
-            AddRing(center, 1.24f, 1.17f, BoardWhite, -0.015f);
-            AddCircle(center, 0.62f, GridColor, -0.02f);
-            AddCircle(center, 0.55f, BoardWhite, -0.03f);
+            float scale = LudoBoardLayout.HomeSizeScale;
+            AddCircle(center, 2.04f * scale, GridColor, 0.015f);
+            AddCircle(center, 1.98f * scale, homeColor, 0.005f);
+            AddRing(center, 1.24f * scale, 1.17f * scale, BoardWhite, -0.015f);
+            AddCircle(center, 0.62f * scale, GridColor, -0.02f);
+            AddCircle(center, 0.55f * scale, BoardWhite, -0.03f);
         }
 
         private static Color Lighten(Color color)

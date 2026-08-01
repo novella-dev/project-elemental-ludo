@@ -15,7 +15,8 @@ MonoBehaviour:
   playerId: blue
   tokenColor: {r: 0.24313726, g: 0.61960787, b: 0.8117647, a: 1}
   tokenModel: {fileID: -6689036041284674117, guid: 032f33ef5531e8646847a16cb433a70e, type: 3}
-  tokenModelEulerAngles: {x: -90, y: -90, z: 0}
+  tokenModelEulerAngles: {x: 180, y: 0, z: 0}
   tokenModelFootprint: 0.68
-  tokenModelHeight: 0.98
+  tokenModelHeight: 1.15
   tokenModelTint: {r: 0.08, g: 0.25, b: 0.45, a: 1}
+  tokenModelMaterialMode: 1

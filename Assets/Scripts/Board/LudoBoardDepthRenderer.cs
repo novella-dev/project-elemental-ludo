@@ -173,42 +173,44 @@ namespace ElementalLudo.Board
 
         private void DrawRaisedHomes()
         {
-            DrawRaisedHome(new Vector2(-4.5f, 4.5f), Red);
-            DrawRaisedHome(new Vector2(4.5f, 4.5f), Blue);
-            DrawRaisedHome(new Vector2(-4.5f, -4.5f), Green);
-            DrawRaisedHome(new Vector2(4.5f, -4.5f), Yellow);
+            float homeCenter = LudoBoardLayout.HomeLogicalCenter;
+            DrawRaisedHome(new Vector2(-homeCenter, homeCenter), Red);
+            DrawRaisedHome(new Vector2(homeCenter, homeCenter), Blue);
+            DrawRaisedHome(new Vector2(-homeCenter, -homeCenter), Green);
+            DrawRaisedHome(new Vector2(homeCenter, -homeCenter), Yellow);
         }
 
         private void DrawRaisedHome(Vector2 center, Color color)
         {
+            float scale = LudoBoardLayout.HomeSizeScale;
             AddRingPrism(
                 center,
-                2.06f,
-                2.0f,
+                2.06f * scale,
+                2.0f * scale,
                 -0.305f,
                 0.03f,
                 GridColor,
                 Shade(GridColor, 0.4f));
             AddRingPrism(
                 center,
-                2f,
-                0.61f,
+                2f * scale,
+                0.61f * scale,
                 -0.29f,
                 0.025f,
                 color,
                 Shade(color, 0.31f));
             AddRingPrism(
                 center,
-                1.25f,
-                1.16f,
+                1.25f * scale,
+                1.16f * scale,
                 -0.335f,
                 -0.295f,
                 BoardWhite,
                 Shade(BoardWhite, 0.22f));
             AddRingPrism(
                 center,
-                0.66f,
-                0.60f,
+                0.66f * scale,
+                0.60f * scale,
                 -0.325f,
                 -0.285f,
                 GridColor,

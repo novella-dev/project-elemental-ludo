@@ -74,8 +74,8 @@ namespace ElementalLudo.Board
 
         [Header("Orbit Controls")]
         [SerializeField] private float rotationSpeed = 0.18f;
-        [SerializeField] private float zoomSpeed = 0.02f;
-        [SerializeField] private float orthographicZoomSpeed = 0.006f;
+        [SerializeField] private float zoomSpeed = 10f;
+        [SerializeField] private float orthographicZoomSpeed = 3f;
         [SerializeField] private float minimumDistance = 16f;
         [SerializeField] private float maximumDistance = 54f;
         [SerializeField] private float minimumOrthographicSize = 6f;

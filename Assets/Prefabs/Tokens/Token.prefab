@@ -103,6 +103,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 676950efce0f478b8559149c9291f5c0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ElementalLudo.Tokens.TokenVisual
+  idleSpinSpeed: 90
+  idleSpinTilt: 8
 --- !u!1 &3817115573144108025
 GameObject:
   m_ObjectHideFlags: 0

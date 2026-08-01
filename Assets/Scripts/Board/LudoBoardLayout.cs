@@ -7,6 +7,9 @@ namespace ElementalLudo.Board
         public const float CenterHalfExtent = 1.5f;
         public const float CrossRouteCellLength = 2f;
         public const float RouteCellLength = 1f;
+        public const float HomeLogicalCenter = 5.5f;
+        public const float HomeWorldCenter = 7f;
+        public const float HomeSizeScale = 4f / 3f;
 
         public static Vector2 ToWorld(Vector2 logicalPosition)
         {
