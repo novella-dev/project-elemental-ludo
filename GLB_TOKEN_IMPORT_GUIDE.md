@@ -95,7 +95,10 @@ Do not create separate gameplay logic for red tokens. Extend the existing `Playe
     new Vector3(-90f, 0f, 0f);
 [SerializeField, Min(0.01f)] private float tokenModelFootprint = 0.68f;
 [SerializeField, Min(0.01f)] private float tokenModelHeight = 0.98f;
+[ColorUsage(false, true)]
 [SerializeField] private Color tokenModelTint = Color.white;
+[ColorUsage(false, true)]
+[SerializeField] private Color tokenModelEmission = Color.black;
 [SerializeField] private TokenModelMaterialMode tokenModelMaterialMode;
 ```
 
@@ -183,12 +186,12 @@ This retains the GLB appearance while keeping the gameplay selection cues.
 
 Preferred method: select each style asset in Unity and assign its model in the **Token Model** field. The current assignments are:
 
-| Player style | Model | Euler angles | Height | Tint | Material mode |
-| --- | --- | --- | --- | --- | --- |
-| `RedPlayerStyle` | `fire.glb` | `(-90, 0, 0)` | `0.98` | White | Opaque |
-| `BluePlayerStyle` | `WaterDrop.glb` | `(180, 0, 0)` | `1.15` | Dark blue `(0.08, 0.25, 0.45, 1)` | Opaque |
-| `YellowPlayerStyle` | `lightning.glb` | `(-90, 0, 0)` | `0.98` | White | Opaque |
-| `GreenPlayerStyle` | `plant.glb` | `(180, 0, 0)` | `0.98` | White | Alpha Clip |
+| Player style | Model | Euler angles | Height | Tint | Emission | Material mode |
+| --- | --- | --- | --- | --- | --- | --- |
+| `RedPlayerStyle` | `fire.glb` | `(-90, 0, 0)` | `0.98` | White | Off | Opaque |
+| `BluePlayerStyle` | `WaterDrop.glb` | `(180, 0, 0)` | `1.15` | Electric cyan `(0.08, 1.25, 2.8, 1)` | Cyan `(0.01, 0.2, 0.8, 1)` | Opaque |
+| `YellowPlayerStyle` | `lightning.glb` | `(-90, 0, 0)` | `0.98` | Hot gold `(2.5, 1.4, 0.05, 1)` | Gold `(0.8, 0.3, 0.01, 1)` | Opaque |
+| `GreenPlayerStyle` | `plant.glb` | `(180, 0, 0)` | `0.98` | Lime green `(0.25, 2.4, 0.18, 1)` | Green `(0.03, 0.45, 0.02, 1)` | Alpha Clip |
 
 All four currently use the same footprint target:
 
@@ -208,6 +211,11 @@ rotation is `(180, 0, 0)`; the former `(-90, 0, 0)` placed the leaf rosette on i
 side and made the whole model collapse to a thin silhouette from two camera
 directions. Fire and lightning are kept opaque, and all runtime material modes
 explicitly render both sides.
+
+The elemental runtime materials use zero metallic factor and `0.6` roughness for
+a consistent matte finish. Water, lightning, and plant add a restrained
+element-coloured emissive lift so their saturated palette remains readable under
+different board lighting. Fire retains its imported unlit appearance.
 
 For LLM automation, use a temporary editor script instead of hand-writing an unknown file ID:
 

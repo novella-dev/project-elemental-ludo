@@ -22,7 +22,10 @@ namespace ElementalLudo.Tokens
             new Vector3(-90f, 0f, 0f);
         [SerializeField, Min(0.01f)] private float tokenModelFootprint = 0.68f;
         [SerializeField, Min(0.01f)] private float tokenModelHeight = 0.98f;
+        [ColorUsage(false, true)]
         [SerializeField] private Color tokenModelTint = Color.white;
+        [ColorUsage(false, true)]
+        [SerializeField] private Color tokenModelEmission = Color.black;
         [Tooltip("Runtime material treatment used to keep the model visible from every camera angle.")]
         [SerializeField]
         private TokenModelMaterialMode tokenModelMaterialMode;
@@ -34,6 +37,7 @@ namespace ElementalLudo.Tokens
         public float TokenModelFootprint => tokenModelFootprint;
         public float TokenModelHeight => tokenModelHeight;
         public Color TokenModelTint => tokenModelTint;
+        public Color TokenModelEmission => tokenModelEmission;
         public TokenModelMaterialMode TokenModelMaterialMode =>
             tokenModelMaterialMode;
 

@@ -18,5 +18,6 @@ MonoBehaviour:
   tokenModelEulerAngles: {x: 180, y: 0, z: 0}
   tokenModelFootprint: 0.68
   tokenModelHeight: 0.98
-  tokenModelTint: {r: 1, g: 1, b: 1, a: 1}
+  tokenModelTint: {r: 0.25, g: 2.4, b: 0.18, a: 1}
+  tokenModelEmission: {r: 0.03, g: 0.45, b: 0.02, a: 1}
   tokenModelMaterialMode: 2

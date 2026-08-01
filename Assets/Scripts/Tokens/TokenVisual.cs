@@ -16,6 +16,16 @@ namespace ElementalLudo.Tokens
             "Fire Token (import manually)";
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
         private static readonly int ColorId = Shader.PropertyToID("_Color");
+        private static readonly int GltfBaseColorId =
+            Shader.PropertyToID("baseColorFactor");
+        private static readonly int GltfEmissiveFactorId =
+            Shader.PropertyToID("emissiveFactor");
+        private static readonly int EmissionColorId =
+            Shader.PropertyToID("_EmissionColor");
+        private static readonly int MetallicFactorId =
+            Shader.PropertyToID("metallicFactor");
+        private static readonly int RoughnessFactorId =
+            Shader.PropertyToID("roughnessFactor");
         private static readonly int SurfaceId = Shader.PropertyToID("_Surface");
         private static readonly int ZWriteId = Shader.PropertyToID("_ZWrite");
         private static readonly int SrcBlendId = Shader.PropertyToID("_SrcBlend");
@@ -67,6 +77,7 @@ namespace ElementalLudo.Tokens
         private MaterialPropertyBlock propertyBlock;
         private Color currentColor = NeutralColor;
         private Color customModelTint = Color.white;
+        private Color customModelEmission = Color.black;
         private TokenInteractionState interactionState;
         private GameObject customModelPrefab;
         private GameObject customModelInstance;
@@ -222,6 +233,7 @@ namespace ElementalLudo.Tokens
             {
                 currentColor = NeutralColor;
                 customModelTint = Color.white;
+                customModelEmission = Color.black;
                 SetCustomModel(
                     null,
                     Vector3.zero,
@@ -233,6 +245,7 @@ namespace ElementalLudo.Tokens
             {
                 currentColor = style.TokenColor;
                 customModelTint = style.TokenModelTint;
+                customModelEmission = style.TokenModelEmission;
                 SetCustomModel(
                     style.TokenModel,
                     style.TokenModelEulerAngles,
@@ -357,6 +370,7 @@ namespace ElementalLudo.Tokens
                     }
 
                     ConfigureDoubleSidedMaterial(runtimeMaterial);
+                    ConfigureCartoonSurface(runtimeMaterial);
                     runtimeMaterials[materialIndex] = runtimeMaterial;
                     customModelMaterials.Add(runtimeMaterial);
                 }
@@ -423,6 +437,13 @@ namespace ElementalLudo.Tokens
                 BuiltInCullModeId,
                 (float)CullMode.Off);
             material.doubleSidedGI = true;
+        }
+
+        private static void ConfigureCartoonSurface(Material material)
+        {
+            SetMaterialFloatIfPresent(material, MetallicFactorId, 0f);
+            SetMaterialFloatIfPresent(material, RoughnessFactorId, 0.6f);
+            material.EnableKeyword("_EMISSION");
         }
 
         private static void SetMaterialFloatIfPresent(
@@ -523,7 +544,11 @@ namespace ElementalLudo.Tokens
             MeshRenderer proceduralRenderer = ProceduralRenderer;
             if (proceduralRenderer != null && proceduralRenderer.enabled)
             {
-                ApplyRendererColor(proceduralRenderer, currentColor, 0);
+                ApplyRendererColor(
+                    proceduralRenderer,
+                    currentColor,
+                    Color.black,
+                    0);
             }
 
             if (customModelRenderers == null)
@@ -549,6 +574,7 @@ namespace ElementalLudo.Tokens
                     ApplyRendererColor(
                         modelRenderer,
                         tinted,
+                        customModelEmission,
                         materialIndex);
                 }
             }
@@ -557,6 +583,7 @@ namespace ElementalLudo.Tokens
         private void ApplyRendererColor(
             Renderer targetRenderer,
             Color baseColor,
+            Color emissionColor,
             int materialIndex)
         {
             propertyBlock ??= new MaterialPropertyBlock();
@@ -572,6 +599,15 @@ namespace ElementalLudo.Tokens
             };
             propertyBlock.SetColor(BaseColorId, displayColor);
             propertyBlock.SetColor(ColorId, displayColor);
+            propertyBlock.SetColor(GltfBaseColorId, displayColor);
+            Color displayEmission = interactionState ==
+                TokenInteractionState.Disabled
+                ? emissionColor * 0.15f
+                : emissionColor;
+            propertyBlock.SetColor(
+                GltfEmissiveFactorId,
+                displayEmission);
+            propertyBlock.SetColor(EmissionColorId, displayEmission);
             targetRenderer.SetPropertyBlock(propertyBlock, materialIndex);
         }
 
@@ -580,6 +616,11 @@ namespace ElementalLudo.Tokens
             if (material == null)
             {
                 return Color.white;
+            }
+
+            if (material.HasProperty(GltfBaseColorId))
+            {
+                return material.GetColor(GltfBaseColorId);
             }
 
             if (material.HasProperty(BaseColorId))
