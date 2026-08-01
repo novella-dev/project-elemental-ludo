@@ -99,6 +99,9 @@ Do not create separate gameplay logic for red tokens. Extend the existing `Playe
 [SerializeField] private Color tokenModelTint = Color.white;
 [ColorUsage(false, true)]
 [SerializeField] private Color tokenModelEmission = Color.black;
+[SerializeField] private bool tokenModelOutline;
+[SerializeField, Range(0f, 0.08f)] private float tokenModelOutlineWidth = 0.018f;
+[SerializeField] private Color tokenModelOutlineColor;
 [SerializeField] private TokenModelMaterialMode tokenModelMaterialMode;
 ```
 
@@ -129,6 +132,7 @@ Use `visual.SetStyle(null)` for a missing style. `Token` remains responsible for
 7. Copy the token layer recursively to the imported hierarchy.
 8. Preserve imported materials by default and use `MaterialPropertyBlock` for selectable/disabled feedback.
 9. Apply the style's **Token Model Material Mode** to runtime-only material clones: use opaque for solid models and alpha clip for textures that need transparent cutouts.
+10. If the style enables **Token Model Outline**, create a reverse-hull renderer beneath each model renderer using `Elemental Ludo/Token Outline`. Keep it visual-only and beneath the existing token root and collider.
 
 The runtime child is named:
 
@@ -186,12 +190,12 @@ This retains the GLB appearance while keeping the gameplay selection cues.
 
 Preferred method: select each style asset in Unity and assign its model in the **Token Model** field. The current assignments are:
 
-| Player style | Model | Euler angles | Height | Tint | Emission | Material mode |
-| --- | --- | --- | --- | --- | --- | --- |
-| `RedPlayerStyle` | `fire.glb` | `(-90, 0, 0)` | `0.98` | White | Off | Opaque |
-| `BluePlayerStyle` | `WaterDrop.glb` | `(180, 0, 0)` | `1.15` | Electric cyan `(0.08, 1.25, 2.8, 1)` | Cyan `(0.01, 0.2, 0.8, 1)` | Opaque |
-| `YellowPlayerStyle` | `lightning.glb` | `(-90, 0, 0)` | `0.98` | Hot gold `(2.5, 1.4, 0.05, 1)` | Gold `(0.8, 0.3, 0.01, 1)` | Opaque |
-| `GreenPlayerStyle` | `plant.glb` | `(180, 0, 0)` | `0.98` | Lime green `(0.25, 2.4, 0.18, 1)` | Green `(0.03, 0.45, 0.02, 1)` | Alpha Clip |
+| Player style | Model | Euler angles | Height | Tint | Emission | Outline | Material mode |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `RedPlayerStyle` | `fire.glb` | `(-90, 0, 0)` | `0.98` | White | Off | 0.018 world units | Opaque |
+| `BluePlayerStyle` | `WaterDrop.glb` | `(180, 0, 0)` | `1.15` | Electric cyan `(0.08, 1.25, 2.8, 1)` | Cyan `(0.01, 0.2, 0.8, 1)` | 0.018 world units | Opaque |
+| `YellowPlayerStyle` | `lightning.glb` | `(-90, 0, 0)` | `0.98` | Hot gold `(2.5, 1.4, 0.05, 1)` | Gold `(0.8, 0.3, 0.01, 1)` | 0.018 world units | Opaque |
+| `GreenPlayerStyle` | `plant.glb` | `(180, 0, 0)` | `0.98` | Lime green `(0.25, 2.4, 0.18, 1)` | Green `(0.03, 0.45, 0.02, 1)` | Painted texture only | Alpha Clip |
 
 All four currently use the same footprint target:
 
@@ -216,6 +220,26 @@ The elemental runtime materials use zero metallic factor and `0.6` roughness for
 a consistent matte finish. Water, lightning, and plant add a restrained
 element-coloured emissive lift so their saturated palette remains readable under
 different board lighting. Fire retains its imported unlit appearance.
+
+Fire, water, and lightning use the runtime reverse-hull outline to match the
+plant texture's painted dark borders. The outline shader expands the silhouette
+by `0.018` board world units, culls the front faces, and renders the remaining
+hull behind the main model. A physical width makes the generated border scale
+with camera zoom like the plant's painted border, keeping their apparent line
+weights consistent.
+Do not add the hull to plant: its texture already contains the desired borders,
+and a second outline makes its fine leaves too heavy.
+
+Create each outline from a runtime copy of the imported mesh and average the
+normals of vertices that share a position. Imported hard-edge vertices can carry
+different normals even at the same corner; expanding those independently leaves
+small gaps where two outline sides should meet. Smoothed outline-only normals
+close those joins—especially the lightning's lower point—without changing the
+model's visible geometry, shading, or original outline rendering behavior.
+
+The shared `Token.prefab` raises its `Visual` child by `-0.12` on local Z (toward
+the camera side of the XY board). This keeps every animated model clear of the
+board without changing the token root, collider, route position, or game rules.
 
 For LLM automation, use a temporary editor script instead of hand-writing an unknown file ID:
 
@@ -349,6 +373,8 @@ Delete temporary setup and validation scripts, their `.meta` files, and any empt
 - `Assets/Scripts/Tokens/TokenVisual.cs`
 - `Assets/Data/PlayerStyles/*.asset` for each player receiving a model
 - The corresponding `.glb` and `.glb.meta` files in `Assets/Models/`
+- `Assets/Shaders/LudoTokenOutline.shader`
+- `Assets/Shaders/LudoTokenOutlineMaterial.mat`, referenced by the shared token prefab so the outline shader is retained in player builds
 - `Assets/Scenes/LudoBoard3D.unity` only to remove the obsolete placeholder
 
 `TokenSet.prefab` should not retain custom renderer-enabled overrides from editor automation.

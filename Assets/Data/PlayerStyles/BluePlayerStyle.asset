@@ -20,4 +20,7 @@ MonoBehaviour:
   tokenModelHeight: 1.15
   tokenModelTint: {r: 0.08, g: 1.25, b: 2.8, a: 1}
   tokenModelEmission: {r: 0.01, g: 0.2, b: 0.8, a: 1}
+  tokenModelOutline: 1
+  tokenModelOutlineWidth: 0.018
+  tokenModelOutlineColor: {r: 0.01, g: 0.015, b: 0.02, a: 1}
   tokenModelMaterialMode: 1

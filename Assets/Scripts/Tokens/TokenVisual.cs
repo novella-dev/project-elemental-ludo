@@ -12,6 +12,9 @@ namespace ElementalLudo.Tokens
     {
         private const int RadialSegments = 40;
         private const string GeneratedModelName = "__TokenModel";
+        private const string GeneratedOutlineName = "__TokenOutline";
+        private const string OutlineShaderName =
+            "Elemental Ludo/Token Outline";
         private const string LegacyPlaceholderName =
             "Fire Token (import manually)";
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
@@ -52,6 +55,8 @@ namespace ElementalLudo.Tokens
         [Tooltip("Small spinning-top lean that keeps rotation visible on symmetrical token models.")]
         private float idleSpinTilt = 8f;
 
+        [SerializeField] private Material outlineMaterialTemplate;
+
         private static readonly Vector2[] Profile =
         {
             new Vector2(0.27f, 0.01f),
@@ -83,8 +88,12 @@ namespace ElementalLudo.Tokens
         private GameObject customModelInstance;
         private Renderer[] customModelRenderers;
         private TokenModelMaterialMode customModelMaterialMode;
+        private bool customModelHasOutline;
+        private float customModelOutlineWidth;
+        private Color customModelOutlineColor;
         private readonly List<Material> customModelMaterials =
             new List<Material>();
+        private readonly List<Mesh> customOutlineMeshes = new List<Mesh>();
         private Quaternion idleSpinBaseRotation;
         private float idleSpinAngle;
         private bool idleSpinInitialized;
@@ -239,7 +248,10 @@ namespace ElementalLudo.Tokens
                     Vector3.zero,
                     1f,
                     1f,
-                    TokenModelMaterialMode.Preserve);
+                    TokenModelMaterialMode.Preserve,
+                    false,
+                    0f,
+                    Color.black);
             }
             else
             {
@@ -251,7 +263,10 @@ namespace ElementalLudo.Tokens
                     style.TokenModelEulerAngles,
                     style.TokenModelFootprint,
                     style.TokenModelHeight,
-                    style.TokenModelMaterialMode);
+                    style.TokenModelMaterialMode,
+                    style.TokenModelOutline,
+                    style.TokenModelOutlineWidth,
+                    style.TokenModelOutlineColor);
             }
 
             ApplyColor();
@@ -280,7 +295,10 @@ namespace ElementalLudo.Tokens
             Vector3 eulerAngles,
             float targetFootprint,
             float targetHeight,
-            TokenModelMaterialMode materialMode)
+            TokenModelMaterialMode materialMode,
+            bool hasOutline,
+            float outlineWidth,
+            Color outlineColor)
         {
             if (!Application.isPlaying)
             {
@@ -289,7 +307,10 @@ namespace ElementalLudo.Tokens
 
             if (customModelPrefab == modelPrefab &&
                 customModelInstance != null &&
-                customModelMaterialMode == materialMode)
+                customModelMaterialMode == materialMode &&
+                customModelHasOutline == hasOutline &&
+                Mathf.Approximately(customModelOutlineWidth, outlineWidth) &&
+                customModelOutlineColor == outlineColor)
             {
                 customModelInstance.transform.localPosition = Vector3.zero;
                 customModelInstance.transform.localRotation =
@@ -304,6 +325,9 @@ namespace ElementalLudo.Tokens
             RemoveOrphanedModelInstances();
             customModelPrefab = modelPrefab;
             customModelMaterialMode = materialMode;
+            customModelHasOutline = hasOutline;
+            customModelOutlineWidth = outlineWidth;
+            customModelOutlineColor = outlineColor;
             ProceduralRenderer.enabled = modelPrefab == null;
 
             if (modelPrefab == null)
@@ -329,7 +353,191 @@ namespace ElementalLudo.Tokens
             }
 
             FitCustomModel(targetFootprint, targetHeight);
+            if (hasOutline)
+            {
+                CreateCustomModelOutlines(outlineWidth, outlineColor);
+            }
+
             DisableUnownedCopiesOfCustomModel();
+        }
+
+        private void CreateCustomModelOutlines(
+            float outlineWidth,
+            Color outlineColor)
+        {
+            Material outlineMaterial;
+            if (outlineMaterialTemplate != null)
+            {
+                outlineMaterial = new Material(outlineMaterialTemplate);
+            }
+            else
+            {
+                Shader outlineShader = Shader.Find(OutlineShaderName);
+                if (outlineShader == null)
+                {
+                    Debug.LogWarning(
+                        $"Token outline shader '{OutlineShaderName}' was not found.",
+                        this);
+                    return;
+                }
+
+                outlineMaterial = new Material(outlineShader);
+            }
+
+            outlineMaterial.name = "Token Outline (Runtime)";
+            outlineMaterial.hideFlags = HideFlags.DontSave;
+            outlineMaterial.SetColor("_OutlineColor", outlineColor);
+            outlineMaterial.SetFloat(
+                "_OutlineWidth",
+                Mathf.Clamp(outlineWidth, 0f, 0.08f));
+            customModelMaterials.Add(outlineMaterial);
+
+            foreach (Renderer sourceRenderer in customModelRenderers)
+            {
+                if (sourceRenderer is MeshRenderer meshRenderer)
+                {
+                    CreateMeshOutline(meshRenderer, outlineMaterial);
+                }
+                else if (sourceRenderer is SkinnedMeshRenderer skinnedRenderer)
+                {
+                    CreateSkinnedMeshOutline(
+                        skinnedRenderer,
+                        outlineMaterial);
+                }
+            }
+        }
+
+        private void CreateMeshOutline(
+            MeshRenderer sourceRenderer,
+            Material outlineMaterial)
+        {
+            MeshFilter sourceFilter = sourceRenderer.GetComponent<MeshFilter>();
+            if (sourceFilter == null || sourceFilter.sharedMesh == null)
+            {
+                return;
+            }
+
+            GameObject outlineObject = CreateOutlineObject(sourceRenderer);
+            MeshFilter outlineFilter = outlineObject.AddComponent<MeshFilter>();
+            outlineFilter.sharedMesh = CreateOutlineMesh(sourceFilter.sharedMesh);
+            MeshRenderer outlineRenderer =
+                outlineObject.AddComponent<MeshRenderer>();
+            outlineRenderer.sharedMaterials = CreateOutlineMaterials(
+                outlineMaterial,
+                sourceFilter.sharedMesh.subMeshCount);
+            ConfigureOutlineRenderer(outlineRenderer, sourceRenderer);
+        }
+
+        private void CreateSkinnedMeshOutline(
+            SkinnedMeshRenderer sourceRenderer,
+            Material outlineMaterial)
+        {
+            if (sourceRenderer.sharedMesh == null)
+            {
+                return;
+            }
+
+            GameObject outlineObject = CreateOutlineObject(sourceRenderer);
+            SkinnedMeshRenderer outlineRenderer =
+                outlineObject.AddComponent<SkinnedMeshRenderer>();
+            outlineRenderer.sharedMesh = CreateOutlineMesh(
+                sourceRenderer.sharedMesh);
+            outlineRenderer.bones = sourceRenderer.bones;
+            outlineRenderer.rootBone = sourceRenderer.rootBone;
+            outlineRenderer.localBounds = sourceRenderer.localBounds;
+            outlineRenderer.updateWhenOffscreen =
+                sourceRenderer.updateWhenOffscreen;
+            outlineRenderer.sharedMaterials = CreateOutlineMaterials(
+                outlineMaterial,
+                sourceRenderer.sharedMesh.subMeshCount);
+            ConfigureOutlineRenderer(outlineRenderer, sourceRenderer);
+        }
+
+        private Mesh CreateOutlineMesh(Mesh sourceMesh)
+        {
+            if (!sourceMesh.isReadable)
+            {
+                Debug.LogWarning(
+                    $"Cannot smooth the outline of unreadable mesh " +
+                    $"'{sourceMesh.name}'.",
+                    this);
+                return sourceMesh;
+            }
+
+            Mesh outlineMesh = Instantiate(sourceMesh);
+            outlineMesh.name = $"{sourceMesh.name} (Outline)";
+            outlineMesh.hideFlags = HideFlags.DontSave;
+            SmoothSharedVertexNormals(outlineMesh);
+            customOutlineMeshes.Add(outlineMesh);
+            return outlineMesh;
+        }
+
+        private static void SmoothSharedVertexNormals(Mesh mesh)
+        {
+            Vector3[] vertices = mesh.vertices;
+            Vector3[] normals = mesh.normals;
+            if (vertices.Length == 0 || normals.Length != vertices.Length)
+            {
+                return;
+            }
+
+            Dictionary<Vector3, Vector3> normalSums =
+                new Dictionary<Vector3, Vector3>(vertices.Length);
+            for (int index = 0; index < vertices.Length; index++)
+            {
+                Vector3 position = vertices[index];
+                normalSums.TryGetValue(position, out Vector3 normalSum);
+                normalSums[position] = normalSum + normals[index];
+            }
+
+            for (int index = 0; index < vertices.Length; index++)
+            {
+                Vector3 normalSum = normalSums[vertices[index]];
+                if (normalSum.sqrMagnitude > 0.000001f)
+                {
+                    normals[index] = normalSum.normalized;
+                }
+            }
+
+            mesh.normals = normals;
+        }
+
+        private static GameObject CreateOutlineObject(Renderer sourceRenderer)
+        {
+            GameObject outlineObject = new GameObject(GeneratedOutlineName)
+            {
+                hideFlags = HideFlags.DontSave,
+                layer = sourceRenderer.gameObject.layer
+            };
+            outlineObject.transform.SetParent(sourceRenderer.transform, false);
+            return outlineObject;
+        }
+
+        private static Material[] CreateOutlineMaterials(
+            Material outlineMaterial,
+            int subMeshCount)
+        {
+            int materialCount = Mathf.Max(1, subMeshCount);
+            Material[] materials = new Material[materialCount];
+            for (int index = 0; index < materialCount; index++)
+            {
+                materials[index] = outlineMaterial;
+            }
+
+            return materials;
+        }
+
+        private static void ConfigureOutlineRenderer(
+            Renderer outlineRenderer,
+            Renderer sourceRenderer)
+        {
+            outlineRenderer.enabled = sourceRenderer.enabled;
+            outlineRenderer.shadowCastingMode = ShadowCastingMode.Off;
+            outlineRenderer.receiveShadows = false;
+            outlineRenderer.lightProbeUsage = LightProbeUsage.Off;
+            outlineRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+            outlineRenderer.sortingLayerID = sourceRenderer.sortingLayerID;
+            outlineRenderer.sortingOrder = sourceRenderer.sortingOrder - 1;
         }
 
         private void ConfigureCustomModelMaterials(
@@ -793,9 +1001,19 @@ namespace ElementalLudo.Tokens
 
             customModelMaterials.Clear();
 
+            foreach (Mesh outlineMesh in customOutlineMeshes)
+            {
+                DestroyGeneratedObject(outlineMesh);
+            }
+
+            customOutlineMeshes.Clear();
+
             customModelInstance = null;
             customModelRenderers = null;
             customModelMaterialMode = TokenModelMaterialMode.Preserve;
+            customModelHasOutline = false;
+            customModelOutlineWidth = 0f;
+            customModelOutlineColor = Color.black;
         }
 
         private static void DestroyGeneratedObject(Object target)
