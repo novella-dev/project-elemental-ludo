@@ -93,6 +93,7 @@ namespace ElementalLudo.Gameplay
         private int activePlayerIndex;
         private int rolledValue;
         private bool actionPerformed;
+        private bool autoRoll;
         private bool initialized;
         private PlayerStyle winner;
         private string statusMessage = string.Empty;
@@ -345,10 +346,15 @@ namespace ElementalLudo.Gameplay
             {
                 if (LudoMovementRules.CanLeaveHome(token.State, rolledValue))
                 {
-                    legalActions.Add(new LudoLegalAction(
-                        token,
-                        LudoActionType.LeaveHome,
-                        0));
+                    Vector2Int startCell = player.Route[0];
+                    if (!IsCellBlockedByOpponent(startCell, player))
+                    {
+                        legalActions.Add(new LudoLegalAction(
+                            token,
+                            LudoActionType.LeaveHome,
+                            0));
+                    }
+
                     continue;
                 }
 
@@ -359,10 +365,13 @@ namespace ElementalLudo.Gameplay
                         player.Route.Length,
                         out int destination))
                 {
-                    legalActions.Add(new LudoLegalAction(
-                        token,
-                        LudoActionType.Move,
-                        destination));
+                    if (!IsPathBlocked(player, token.RouteIndex + 1, destination))
+                    {
+                        legalActions.Add(new LudoLegalAction(
+                            token,
+                            LudoActionType.Move,
+                            destination));
+                    }
                 }
             }
         }
@@ -422,6 +431,8 @@ namespace ElementalLudo.Gameplay
                     token,
                     GetRoutePosition(player, token, 0));
                 token.MoveToTrack(0);
+                CaptureOpponentTokensOnCell(player, token);
+                RepositionSameColorTokens(player);
                 statusMessage = $"{token.name} entered the starting square.";
             }
             else
@@ -436,6 +447,9 @@ namespace ElementalLudo.Gameplay
                         GetRoutePosition(player, token, routeIndex));
                     token.MoveToTrack(routeIndex);
                 }
+
+                CaptureOpponentTokensOnCell(player, token);
+                RepositionSameColorTokens(player);
 
                 if (action.DestinationRouteIndex == player.Route.Length - 1)
                 {
@@ -505,6 +519,17 @@ namespace ElementalLudo.Gameplay
             SetTokenInteractionStates(false, true);
             statusMessage =
                 $"{DisplayName(ActivePlayer.PlayerId)} player's turn. Roll the die.";
+
+            if (autoRoll)
+            {
+                StartCoroutine(AutoRollAfterDelay());
+            }
+        }
+
+        private IEnumerator AutoRollAfterDelay()
+        {
+            yield return null;
+            RequestRoll();
         }
 
         private void EndGame(PlayerRuntime winningPlayer)
@@ -539,8 +564,171 @@ namespace ElementalLudo.Gameplay
                 Vector2 worldOffset = LudoBoardLayout.ToWorld(logicalOffset);
                 position += new Vector3(worldOffset.x, worldOffset.y, 0f);
             }
+            else
+            {
+                position += GetSameColorCellOffset(player, token, routeIndex, cell);
+            }
 
             return position;
+        }
+
+        private Vector3 GetSameColorCellOffset(
+            PlayerRuntime player,
+            Token token,
+            int routeIndex,
+            Vector2Int cell)
+        {
+            int count = 0;
+            int tokenIndex = -1;
+            foreach (Token t in player.Tokens)
+            {
+                if (t.State == TokenState.Track && t.RouteIndex == routeIndex)
+                {
+                    if (t == token)
+                    {
+                        tokenIndex = count;
+                    }
+
+                    count++;
+                }
+            }
+
+            if (count <= 1)
+            {
+                return Vector3.zero;
+            }
+
+            float offsetMagnitude = 0.55f;
+            float baseOffset = (tokenIndex - (count - 1) * 0.5f) * offsetMagnitude;
+
+            if (Mathf.Abs(cell.x) > Mathf.Abs(cell.y))
+            {
+                return new Vector3(0f, baseOffset, 0f);
+            }
+
+            return new Vector3(baseOffset, 0f, 0f);
+        }
+
+        private Vector2Int GetTokenLogicalCell(Token token)
+        {
+            if (token.State != TokenState.Track && token.State != TokenState.Finished)
+            {
+                return new Vector2Int(int.MinValue, int.MinValue);
+            }
+
+            foreach (PlayerRuntime player in players)
+            {
+                if (player.Style == token.OwnerStyle)
+                {
+                    return player.Route[token.RouteIndex];
+                }
+            }
+
+            return new Vector2Int(int.MinValue, int.MinValue);
+        }
+
+        private void CaptureOpponentTokensOnCell(PlayerRuntime movingPlayer, Token movingToken)
+        {
+            Vector2Int movingCell = movingPlayer.Route[movingToken.RouteIndex];
+
+            foreach (PlayerRuntime player in players)
+            {
+                if (player == movingPlayer)
+                {
+                    continue;
+                }
+
+                List<Token> captured = new List<Token>();
+                foreach (Token token in player.Tokens)
+                {
+                    if (token.State != TokenState.Track)
+                    {
+                        continue;
+                    }
+
+                    Vector2Int tokenCell = player.Route[token.RouteIndex];
+                    if (tokenCell == movingCell)
+                    {
+                        captured.Add(token);
+                    }
+                }
+
+                foreach (Token token in captured)
+                {
+                    token.SendHome();
+                    token.transform.position = homePositions[token];
+                    token.SetInteractionState(TokenInteractionState.Normal);
+                    statusMessage =
+                        $"{movingToken.name} captured {token.name}!";
+                }
+            }
+        }
+
+        private void RepositionSameColorTokens(PlayerRuntime player)
+        {
+            foreach (Token token in player.Tokens)
+            {
+                if (token.State == TokenState.Track)
+                {
+                    Vector3 newPosition = GetRoutePosition(
+                        player, token, token.RouteIndex);
+                    token.transform.position = newPosition;
+                }
+            }
+        }
+
+        private static int CountSameColorTokensOnCell(
+            PlayerRuntime player,
+            Vector2Int cell)
+        {
+            int count = 0;
+            foreach (Token token in player.Tokens)
+            {
+                if (token.State == TokenState.Track &&
+                    player.Route[token.RouteIndex] == cell)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private bool IsCellBlockedByOpponent(
+            Vector2Int cell,
+            PlayerRuntime movingPlayer)
+        {
+            foreach (PlayerRuntime player in players)
+            {
+                if (player == movingPlayer)
+                {
+                    continue;
+                }
+
+                if (CountSameColorTokensOnCell(player, cell) >= 2)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool IsPathBlocked(
+            PlayerRuntime player,
+            int startIndex,
+            int endIndex)
+        {
+            for (int i = startIndex; i <= endIndex; i++)
+            {
+                Vector2Int cell = player.Route[i];
+                if (IsCellBlockedByOpponent(cell, player))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static Vector3 GetGoalOffset(string playerId, int tokenId)
@@ -644,6 +832,12 @@ namespace ElementalLudo.Gameplay
 
             GUILayout.Label(statusMessage);
             GUILayout.Space(8f);
+
+            string autoLabel = autoRoll ? "AUTO: ON" : "AUTO: OFF";
+            if (GUILayout.Button(autoLabel))
+            {
+                autoRoll = !autoRoll;
+            }
 
             if (phase == LudoTurnPhase.GameOver)
             {

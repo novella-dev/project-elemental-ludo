@@ -120,10 +120,10 @@ namespace ElementalLudo.Board
         {
             float backDepth = mode == LudoBoardDepthMode.Full3D ? 1.25f : 0.78f;
             AddBox(
-                -7.72f,
-                -7.72f,
-                7.72f,
-                7.72f,
+                -9.72f,
+                -9.72f,
+                9.72f,
+                9.72f,
                 0.18f,
                 backDepth,
                 GridColor,
@@ -132,9 +132,9 @@ namespace ElementalLudo.Board
 
         private void DrawRaisedTrack()
         {
-            for (int x = -7; x <= 7; x++)
+            for (int x = -9; x <= 9; x++)
             {
-                for (int y = -7; y <= 7; y++)
+                for (int y = -9; y <= 9; y++)
                 {
                     bool horizontalArm = Mathf.Abs(y) <= 1 && Mathf.Abs(x) >= 2;
                     bool verticalArm = Mathf.Abs(x) <= 1 && Mathf.Abs(y) >= 2;
@@ -217,18 +217,18 @@ namespace ElementalLudo.Board
 
         private void DrawRaisedSafeCells()
         {
-            DrawMarker(new Vector2(0f, 7f), SafeCell);
-            DrawMarker(new Vector2(-1f, 4f), Lighten(Red));
-            DrawMarker(new Vector2(1f, 4f), SafeCell);
-            DrawMarker(new Vector2(-4f, 1f), SafeCell);
-            DrawMarker(new Vector2(4f, 1f), Lighten(Blue));
-            DrawMarker(new Vector2(-7f, 0f), SafeCell);
-            DrawMarker(new Vector2(7f, 0f), SafeCell);
-            DrawMarker(new Vector2(-4f, -1f), Lighten(Green));
-            DrawMarker(new Vector2(4f, -1f), SafeCell);
-            DrawMarker(new Vector2(-1f, -4f), SafeCell);
-            DrawMarker(new Vector2(1f, -4f), Lighten(Yellow));
-            DrawMarker(new Vector2(0f, -7f), SafeCell);
+            DrawMarker(new Vector2(0f, 9f), SafeCell);
+            DrawMarker(new Vector2(-1f, 5f), Lighten(Red));
+            DrawMarker(new Vector2(1f, 5f), SafeCell);
+            DrawMarker(new Vector2(-5f, 1f), SafeCell);
+            DrawMarker(new Vector2(5f, 1f), Lighten(Blue));
+            DrawMarker(new Vector2(-9f, 0f), SafeCell);
+            DrawMarker(new Vector2(9f, 0f), SafeCell);
+            DrawMarker(new Vector2(-5f, -1f), Lighten(Green));
+            DrawMarker(new Vector2(5f, -1f), SafeCell);
+            DrawMarker(new Vector2(-1f, -5f), SafeCell);
+            DrawMarker(new Vector2(1f, -5f), Lighten(Yellow));
+            DrawMarker(new Vector2(0f, -9f), SafeCell);
         }
 
         private void DrawMarker(Vector2 center, Color color)
@@ -244,22 +244,22 @@ namespace ElementalLudo.Board
 
         private static Color TrackColor(int x, int y)
         {
-            if ((x == 0 && y >= 2 && y <= 6) || (x == -1 && y == 4))
+            if ((x == 0 && y >= 2 && y <= 8) || (x == -1 && y == 5))
             {
                 return Red;
             }
 
-            if ((y == 0 && x >= 2 && x <= 6) || (x == 4 && y == 1))
+            if ((y == 0 && x >= 2 && x <= 8) || (x == 5 && y == 1))
             {
                 return Blue;
             }
 
-            if ((x == 0 && y >= -6 && y <= -2) || (x == 1 && y == -4))
+            if ((x == 0 && y >= -8 && y <= -2) || (x == 1 && y == -5))
             {
                 return Yellow;
             }
 
-            if ((y == 0 && x >= -6 && x <= -2) || (x == -4 && y == -1))
+            if ((y == 0 && x >= -8 && x <= -2) || (x == -5 && y == -1))
             {
                 return Green;
             }
