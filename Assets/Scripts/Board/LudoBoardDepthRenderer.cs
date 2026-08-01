@@ -149,7 +149,7 @@ namespace ElementalLudo.Board
                         y - 0.455f,
                         x + 0.455f,
                         y + 0.455f,
-                        -0.19f,
+                        -0.05f,
                         0.025f,
                         topColor,
                         Shade(topColor, 0.28f));

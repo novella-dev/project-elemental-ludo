@@ -100,6 +100,30 @@ namespace ElementalLudo.Board
             BuildCellLabels();
         }
 
+        private void LateUpdate()
+        {
+            if (cellLabels.Count == 0)
+            {
+                return;
+            }
+
+            Camera cam = Camera.main;
+            if (cam == null)
+            {
+                return;
+            }
+
+            foreach (GameObject label in cellLabels)
+            {
+                if (label != null)
+                {
+                    label.transform.LookAt(
+                        label.transform.position + cam.transform.forward,
+                        cam.transform.up);
+                }
+            }
+        }
+
         private void OnDestroy()
         {
             DestroyGeneratedObject(boardMesh);
@@ -143,7 +167,7 @@ namespace ElementalLudo.Board
                     continue;
                 }
 
-                Vector3 worldPosition = LudoBoardLayout.ToWorld(cell, -0.095f);
+                Vector3 worldPosition = LudoBoardLayout.ToWorld(cell, -0.25f);
 
                 GameObject label = new GameObject($"CellLabel_{number}")
                 {
@@ -160,7 +184,7 @@ namespace ElementalLudo.Board
                 textMesh.anchor = TextAnchor.MiddleCenter;
                 textMesh.alignment = TextAlignment.Center;
                 textMesh.characterSize = 0.18f;
-                textMesh.color = new Color(0.10f, 0.10f, 0.10f, 0.75f);
+                textMesh.color = new Color(0.10f, 0.10f, 0.10f, 0.85f);
                 textMesh.fontStyle = FontStyle.Bold;
                 textMesh.offsetZ = 0f;
 

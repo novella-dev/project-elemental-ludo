@@ -15,6 +15,7 @@ namespace ElementalLudo.Tokens
             new Vector3(-90f, 0f, 0f);
         [SerializeField, Min(0.01f)] private float tokenModelFootprint = 0.68f;
         [SerializeField, Min(0.01f)] private float tokenModelHeight = 0.98f;
+        [SerializeField] private Color tokenModelTint = Color.white;
 
         public string PlayerId => playerId;
         public Color TokenColor => tokenColor;
@@ -22,6 +23,7 @@ namespace ElementalLudo.Tokens
         public Vector3 TokenModelEulerAngles => tokenModelEulerAngles;
         public float TokenModelFootprint => tokenModelFootprint;
         public float TokenModelHeight => tokenModelHeight;
+        public Color TokenModelTint => tokenModelTint;
 
         public void Configure(string id, Color color)
         {

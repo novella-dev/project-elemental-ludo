@@ -45,6 +45,7 @@ namespace ElementalLudo.Tokens
         private Mesh tokenMesh;
         private MaterialPropertyBlock propertyBlock;
         private Color currentColor = NeutralColor;
+        private Color customModelTint = Color.white;
         private TokenInteractionState interactionState;
         private GameObject customModelPrefab;
         private GameObject customModelInstance;
@@ -61,7 +62,6 @@ namespace ElementalLudo.Tokens
         private void OnEnable()
         {
             RemoveOrphanedSceneModels();
-            RemoveOrphanedModelInstances();
             RebuildMesh();
             ApplyColor();
         }
@@ -151,11 +151,13 @@ namespace ElementalLudo.Tokens
             if (style == null)
             {
                 currentColor = NeutralColor;
+                customModelTint = Color.white;
                 SetCustomModel(null, Vector3.zero, 1f, 1f);
             }
             else
             {
                 currentColor = style.TokenColor;
+                customModelTint = style.TokenModelTint;
                 SetCustomModel(
                     style.TokenModel,
                     style.TokenModelEulerAngles,
@@ -190,9 +192,6 @@ namespace ElementalLudo.Tokens
             float targetFootprint,
             float targetHeight)
         {
-            // OnValidate also runs while Unity imports persistent prefab assets.
-            // Instantiate the model only in Play mode; the procedural pawn remains
-            // as the lightweight edit-mode preview.
             if (!Application.isPlaying)
             {
                 return;
@@ -210,6 +209,7 @@ namespace ElementalLudo.Tokens
             }
 
             DestroyCustomModelInstance();
+            RemoveOrphanedModelInstances();
             customModelPrefab = modelPrefab;
             ProceduralRenderer.enabled = modelPrefab == null;
 
@@ -343,9 +343,10 @@ namespace ElementalLudo.Tokens
                 {
                     Material material = materials[materialIndex];
                     Color baseColor = GetMaterialColor(material);
+                    Color tinted = baseColor * customModelTint;
                     ApplyRendererColor(
                         modelRenderer,
-                        baseColor,
+                        tinted,
                         materialIndex);
                 }
             }
