@@ -14,3 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ElementalLudo.Tokens.PlayerStyle
   playerId: red
   tokenColor: {r: 0.827451, g: 0.06666667, b: 0.21176471, a: 1}
+  tokenModel: {fileID: 8128668236925612103, guid: 2bfe5d99449b3ec4c99debcaa34e885c, type: 3}
+  tokenModelEulerAngles: {x: -90, y: 0, z: 0}
+  tokenModelFootprint: 0.68
+  tokenModelHeight: 0.98

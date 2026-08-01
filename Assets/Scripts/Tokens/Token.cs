@@ -92,11 +92,11 @@ namespace ElementalLudo.Tokens
 
             if (ownerStyle != null)
             {
-                visual.SetColor(ownerStyle.TokenColor);
+                visual.SetStyle(ownerStyle);
             }
             else
             {
-                visual.UseNeutralColor();
+                visual.SetStyle(null);
             }
 
             visual.SetInteractionState(InteractionState);
