@@ -29,6 +29,7 @@ namespace ElementalLudo.Gameplay
         [SerializeField] private bool autoExecuteSingleAction = true;
         [Min(0f)]
         [SerializeField] private float noMoveMessageDuration = 1.1f;
+        [SerializeField] private bool elementalModeEnabled;
 
         [Header("Movement")]
         [Min(0f)]
@@ -68,6 +69,11 @@ namespace ElementalLudo.Gameplay
         {
             get => autoRoll;
             set => autoRoll = value;
+        }
+        public bool ElementalModeEnabled
+        {
+            get => elementalModeEnabled;
+            set => elementalModeEnabled = value;
         }
 
         private void Awake()
@@ -430,6 +436,7 @@ namespace ElementalLudo.Gameplay
                 player,
                 players,
                 rolledValue,
+                new LudoRulesContext(elementalModeEnabled),
                 legalActions);
         }
 
@@ -744,7 +751,8 @@ namespace ElementalLudo.Gameplay
                 boardState,
                 movingPlayer,
                 players,
-                movingToken);
+                movingToken,
+                new LudoRulesContext(elementalModeEnabled));
 
             foreach (Token token in captured)
             {
