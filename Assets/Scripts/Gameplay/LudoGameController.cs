@@ -44,7 +44,14 @@ namespace ElementalLudo.Gameplay
             new Dictionary<Token, Vector3>(16);
         private readonly List<string> moveHistory = new List<string>(MaxMoveHistoryEntries);
 
-        private IPlayerController playerController;
+        // One controller per seat, indexed alongside `players`. Hot-seat
+        // points every entry at the same human controller.
+        private readonly List<IPlayerController> playerControllers =
+            new List<IPlayerController>(4);
+        private readonly List<ControllerSubscription> subscriptions =
+            new List<ControllerSubscription>(4);
+
+        private IPlayerController humanController;
         private BoardState boardState;
         private int activePlayerIndex;
         private int rolledValue;
@@ -96,8 +103,8 @@ namespace ElementalLudo.Gameplay
         {
             if (playerControllerSource != null)
             {
-                playerController = playerControllerSource as IPlayerController;
-                if (playerController != null)
+                humanController = playerControllerSource as IPlayerController;
+                if (humanController != null)
                 {
                     return;
                 }
@@ -107,20 +114,20 @@ namespace ElementalLudo.Gameplay
                     this);
             }
 
-            HumanPlayerController humanController =
+            HumanPlayerController found =
                 FindFirstObjectByType<HumanPlayerController>();
-            if (humanController == null)
+            if (found == null)
             {
                 GameObject controllerObject = new GameObject("HumanPlayerController")
                 {
                     hideFlags = HideFlags.DontSave
                 };
                 controllerObject.transform.SetParent(transform, false);
-                humanController = controllerObject.AddComponent<HumanPlayerController>();
+                found = controllerObject.AddComponent<HumanPlayerController>();
             }
 
-            playerControllerSource = humanController;
-            playerController = humanController;
+            playerControllerSource = found;
+            humanController = found;
         }
 
         private void EnsureReachableCellsHighlighter()
@@ -151,11 +158,7 @@ namespace ElementalLudo.Gameplay
                 dice.Rolled += HandleDiceRolled;
             }
 
-            if (playerController != null)
-            {
-                playerController.RollRequested += HandleRollRequested;
-                playerController.TokenSelected += HandleTokenSelected;
-            }
+            SubscribePlayerControllers();
         }
 
         private void Start()
@@ -172,6 +175,8 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
+            AssignAllSeatsTo(humanController);
+            SubscribePlayerControllers();
             RestartGame();
         }
 
@@ -182,26 +187,128 @@ namespace ElementalLudo.Gameplay
                 dice.Rolled -= HandleDiceRolled;
             }
 
-            if (playerController != null)
+            UnsubscribePlayerControllers();
+        }
+
+        /// <summary>The controller holding the seat whose turn it is.</summary>
+        private IPlayerController ActiveController =>
+            initialized && activePlayerIndex < playerControllers.Count
+                ? playerControllers[activePlayerIndex]
+                : null;
+
+        /// <summary>
+        /// Points every seat at one controller — the hot-seat default, where
+        /// a single human plays all four colors.
+        /// </summary>
+        private void AssignAllSeatsTo(IPlayerController controller)
+        {
+            UnsubscribePlayerControllers();
+            playerControllers.Clear();
+            for (int index = 0; index < players.Count; index++)
             {
-                playerController.RollRequested -= HandleRollRequested;
-                playerController.TokenSelected -= HandleTokenSelected;
+                playerControllers.Add(controller);
             }
         }
 
-        private void HandleRollRequested()
+        private void SubscribePlayerControllers()
         {
-            if (phase == LudoTurnPhase.AwaitingRoll)
+            if (!initialized)
+            {
+                return;
+            }
+
+            // Seats can share a controller instance, so subscribe once per
+            // distinct one and sort out who it belongs to when it fires.
+            foreach (IPlayerController controller in playerControllers)
+            {
+                if (controller == null || IsSubscribed(controller))
+                {
+                    continue;
+                }
+
+                IPlayerController source = controller;
+                Action roll = () => HandleRollRequested(source);
+                Action<Token> select = token => HandleTokenSelected(source, token);
+                controller.RollRequested += roll;
+                controller.TokenSelected += select;
+                subscriptions.Add(new ControllerSubscription(controller, roll, select));
+            }
+        }
+
+        private bool IsSubscribed(IPlayerController controller)
+        {
+            foreach (ControllerSubscription subscription in subscriptions)
+            {
+                if (subscription.Controller == controller)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void UnsubscribePlayerControllers()
+        {
+            foreach (ControllerSubscription subscription in subscriptions)
+            {
+                subscription.Controller.RollRequested -= subscription.Roll;
+                subscription.Controller.TokenSelected -= subscription.Select;
+            }
+
+            subscriptions.Clear();
+        }
+
+        /// <summary>
+        /// Intent only counts from whoever holds the active seat, so a human
+        /// clicking during an AI turn can't play that turn for it.
+        /// </summary>
+        private void HandleRollRequested(IPlayerController source)
+        {
+            if (source == ActiveController && phase == LudoTurnPhase.AwaitingRoll)
             {
                 RequestRoll();
             }
         }
 
-        private void HandleTokenSelected(Token token)
+        private void HandleTokenSelected(IPlayerController source, Token token)
         {
-            if (phase == LudoTurnPhase.AwaitingAction)
+            if (source == ActiveController && phase == LudoTurnPhase.AwaitingAction)
             {
                 TrySelectToken(token);
+            }
+        }
+
+        private LudoTurnContext BuildTurnContext()
+        {
+            return new LudoTurnContext(
+                boardState,
+                players[activePlayerIndex],
+                players,
+                rolledValue,
+                legalActions,
+                new LudoRulesContext(elementalModeEnabled));
+        }
+
+        private void NotifyRollTurn()
+        {
+            ActiveController?.BeginRollTurn(BuildTurnContext());
+        }
+
+        private void NotifyActionTurn()
+        {
+            ActiveController?.BeginActionTurn(BuildTurnContext());
+        }
+
+        /// <summary>
+        /// Drops any decision a controller still has in flight, so it can't
+        /// land on a turn that no longer exists.
+        /// </summary>
+        private void CancelPendingDecisions()
+        {
+            foreach (ControllerSubscription subscription in subscriptions)
+            {
+                subscription.Controller.CancelTurn();
             }
         }
 
@@ -219,6 +326,7 @@ namespace ElementalLudo.Gameplay
             // lives on the Dice and would otherwise announce its result into
             // the freshly restarted game.
             dice.CancelRoll();
+            CancelPendingDecisions();
 
             foreach (LudoPlayerState player in players)
             {
@@ -245,6 +353,7 @@ namespace ElementalLudo.Gameplay
             SyncDiceAccent();
             statusMessage =
                 $"{DisplayName(ActivePlayer.PlayerId)} player's turn. Roll the die.";
+            NotifyRollTurn();
         }
 
         public bool RequestRoll()
@@ -404,10 +513,16 @@ namespace ElementalLudo.Gameplay
 
             HighlightReachableCells();
 
-            if (legalActions.Count == 1 && autoExecuteSingleAction)
+            // Only hand the decision over if one is actually still owed —
+            // auto-execute may have already resolved the turn.
+            if (legalActions.Count == 1 &&
+                autoExecuteSingleAction &&
+                TryExecuteAction(legalActions[0]))
             {
-                TryExecuteAction(legalActions[0]);
+                return;
             }
+
+            NotifyActionTurn();
         }
 
         private void HighlightReachableCells()
@@ -665,6 +780,7 @@ namespace ElementalLudo.Gameplay
             dice.SetRollEnabled(true);
             SyncDiceAccent();
             SetTokenInteractionStates(false, true);
+            NotifyRollTurn();
 
             if (autoRoll)
             {
@@ -681,6 +797,7 @@ namespace ElementalLudo.Gameplay
         private void EndGame(LudoPlayerState winningPlayer)
         {
             winner = winningPlayer.Style;
+            CancelPendingDecisions();
             legalActions.Clear();
             ClearReachableCells();
             rolledValue = 0;
@@ -869,6 +986,27 @@ namespace ElementalLudo.Gameplay
             }
 
             return char.ToUpperInvariant(playerId[0]) + playerId.Substring(1);
+        }
+
+        /// <summary>
+        /// Keeps a controller together with the exact delegates it was
+        /// subscribed with, so they can be removed again later.
+        /// </summary>
+        private readonly struct ControllerSubscription
+        {
+            public IPlayerController Controller { get; }
+            public Action Roll { get; }
+            public Action<Token> Select { get; }
+
+            public ControllerSubscription(
+                IPlayerController controller,
+                Action roll,
+                Action<Token> select)
+            {
+                Controller = controller;
+                Roll = roll;
+                Select = select;
+            }
         }
 
         private static string SpanishColorName(string playerId)
