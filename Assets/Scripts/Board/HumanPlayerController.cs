@@ -66,6 +66,21 @@ namespace ElementalLudo.Board
             }
         }
 
+        // A human doesn't wait to be asked — they click whenever the board
+        // lets them, and LudoGameController drops anything that isn't the
+        // active player's to give. So there is nothing to do on these.
+        public void BeginRollTurn(LudoTurnContext context)
+        {
+        }
+
+        public void BeginActionTurn(LudoTurnContext context)
+        {
+        }
+
+        public void CancelTurn()
+        {
+        }
+
         private void HandleRollRequested()
         {
             RollRequested?.Invoke();
