@@ -158,7 +158,7 @@ BoxCollider:
   m_Enabled: 1
   serializedVersion: 3
   m_Size: {x: 0.9, y: 0.9, z: 0.9}
-  m_Center: {x: 0, y: 0, z: -0.45}
+  m_Center: {x: 0, y: 0, z: -0.75}
 --- !u!114 &1273121272281165958
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -174,3 +174,7 @@ MonoBehaviour:
   value: 1
   rollEnabled: 1
   visual: {fileID: 3404227497487245886}
+  rollDuration: 0.6
+  rollHopHeight: 0.6
+  rollSpinTurns: 2.5
+  accentStrength: 0.4
