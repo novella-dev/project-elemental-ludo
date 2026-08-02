@@ -16,6 +16,7 @@ namespace ElementalLudo.Tokens
     {
         [SerializeField] private string playerId = "player";
         [SerializeField] private Color tokenColor = Color.white;
+        [SerializeField] private LudoElement element;
         [Header("Optional token model")]
         [SerializeField] private GameObject tokenModel;
         [SerializeField] private Vector3 tokenModelEulerAngles =
@@ -38,6 +39,7 @@ namespace ElementalLudo.Tokens
 
         public string PlayerId => playerId;
         public Color TokenColor => tokenColor;
+        public LudoElement Element => element;
         public GameObject TokenModel => tokenModel;
         public Vector3 TokenModelEulerAngles => tokenModelEulerAngles;
         public float TokenModelFootprint => tokenModelFootprint;
