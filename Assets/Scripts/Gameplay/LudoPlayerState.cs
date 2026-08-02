@@ -15,6 +15,7 @@ namespace ElementalLudo.Gameplay
         public PlayerStyle Style { get; }
         public List<Token> Tokens { get; }
         public Vector2Int[] Route { get; }
+        public LudoElement Element => Style.Element;
 
         public LudoPlayerState(
             PlayerStyle style,
