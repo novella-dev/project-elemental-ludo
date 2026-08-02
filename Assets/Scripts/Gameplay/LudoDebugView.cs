@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using ElementalLudo.Tokens;
 using UnityEngine;
 
 namespace ElementalLudo.Gameplay
@@ -20,13 +21,10 @@ namespace ElementalLudo.Gameplay
         private const float HistoryPanelHeight = 300f;
         private const int MaxHistoryEntries = 10;
 
-        private static readonly Color LightningColor = new Color(0.9490196f, 0.827451f, 0.24313726f);
-        private static readonly Color WaterColor = new Color(0.24313726f, 0.61960787f, 0.8117647f);
-        private static readonly Color FireColor = new Color(0.827451f, 0.06666667f, 0.21176471f);
-        private static readonly Color PlantColor = new Color(0.039215688f, 0.4117647f, 0.28235295f);
-
         [SerializeField] private LudoGameController controller;
         [SerializeField] private bool showPanel = true;
+
+        private LudoAIDifficulty setupDifficulty = LudoAIDifficulty.Normal;
 
         private readonly Dictionary<Color, Texture2D> textureCache =
             new Dictionary<Color, Texture2D>();
@@ -75,6 +73,12 @@ namespace ElementalLudo.Gameplay
             }
 
             EnsureStyles();
+
+            if (controller.AwaitingSetup)
+            {
+                DrawSetupPopup();
+                return;
+            }
 
             Color playerColor = controller.ActivePlayer.TokenColor;
 
@@ -164,24 +168,116 @@ namespace ElementalLudo.Gameplay
             GUILayout.Label("REGLAS ELEMENTALES", sectionLabelStyle);
             GUILayout.Space(6f);
 
-            DrawElementalRuleLine(
-                LightningColor,
-                "Rayo (Amarillo)",
-                "La distancia de movimiento es la tirada + 1. Salir de casa sigue necesitando un 5, y el turno extra/tres seises siguen usando la tirada real.");
-            DrawElementalRuleLine(
-                WaterColor,
-                "Agua (Azul)",
-                "Ignora barreras de cualquier color en su propio movimiento. Una barrera de agua sigue bloqueando a los demás con normalidad.");
-            DrawElementalRuleLine(
-                FireColor,
-                "Fuego (Rojo)",
-                "Captura también en casillas seguras — para el fuego, ninguna casilla es segura para los rivales.");
-            DrawElementalRuleLine(
-                PlantColor,
-                "Planta (Verde)",
-                "Inmune a las capturas de Agua específicamente. Fuego y Rayo la capturan con normalidad.");
+            // Driven off the actual seats, so re-assigning an element in the
+            // PlayerStyle assets is reflected here without touching this view.
+            foreach (LudoPlayerState player in controller.Players)
+            {
+                DrawElementalRuleLine(
+                    player.Style.TokenColor,
+                    ElementHeading(player),
+                    LudoElementInfo.RuleSummary(player.Element));
+            }
 
             GUILayout.EndArea();
+        }
+
+        private static string ElementHeading(LudoPlayerState player)
+        {
+            return $"{LudoElementInfo.DisplayName(player.Element)} " +
+                   $"({LudoGameController.SpanishColorName(player.Style.PlayerId)})";
+        }
+
+        /// <summary>
+        /// Modal element picker shown before a one-player game starts. Choices
+        /// are collected and applied after the layout block closes, so the
+        /// game doesn't restart midway through building this frame's GUI.
+        /// </summary>
+        private void DrawSetupPopup()
+        {
+            const float width = 560f;
+            const float height = 600f;
+
+            GUILayout.BeginArea(
+                new Rect(
+                    (Screen.width - width) * 0.5f,
+                    Mathf.Max(PanelMargin, (Screen.height - height) * 0.5f),
+                    width,
+                    height),
+                panelStyle);
+
+            GUILayout.Label("ELEMENTAL LUDO", titleStyle);
+            GUILayout.Label(
+                "Elige tu elemento — la IA jugará los otros tres",
+                subtitleStyle);
+            GUILayout.Space(12f);
+
+            GUILayout.Label("DIFICULTAD", sectionLabelStyle);
+            GUILayout.Space(4f);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button(
+                    "Fácil",
+                    setupDifficulty == LudoAIDifficulty.Easy ? toggleOnStyle : toggleOffStyle))
+            {
+                setupDifficulty = LudoAIDifficulty.Easy;
+            }
+
+            if (GUILayout.Button(
+                    "Normal",
+                    setupDifficulty == LudoAIDifficulty.Normal ? toggleOnStyle : toggleOffStyle))
+            {
+                setupDifficulty = LudoAIDifficulty.Normal;
+            }
+
+            GUILayout.EndHorizontal();
+            GUILayout.Space(4f);
+            GUILayout.Label(
+                setupDifficulty == LudoAIDifficulty.Easy
+                    ? "Avanza al azar y saca fichas cuando puede. Si captura, es casualidad."
+                    : "Prioriza capturar, formar barreras y no quedarse a tiro.",
+                hintStyle);
+
+            GUILayout.Space(14f);
+            GUILayout.Label("ELEMENTO", sectionLabelStyle);
+            GUILayout.Space(4f);
+
+            bool picked = false;
+            LudoElement pickedElement = default;
+            foreach (LudoPlayerState player in controller.Players)
+            {
+                if (DrawSetupElementCard(player))
+                {
+                    picked = true;
+                    pickedElement = player.Element;
+                }
+            }
+
+            GUILayout.EndArea();
+
+            if (picked)
+            {
+                controller.StartSinglePlayer(pickedElement, setupDifficulty);
+            }
+        }
+
+        private bool DrawSetupElementCard(LudoPlayerState player)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Box(
+                string.Empty,
+                MakeAccentStyle(player.Style.TokenColor),
+                GUILayout.Width(5f),
+                GUILayout.ExpandHeight(true));
+            GUILayout.Space(8f);
+            GUILayout.BeginVertical();
+            GUILayout.Label(ElementHeading(player), ruleTitleStyle);
+            GUILayout.Label(LudoElementInfo.RuleSummary(player.Element), hintStyle);
+            bool clicked = GUILayout.Button(
+                $"Jugar con {LudoElementInfo.DisplayName(player.Element)}",
+                actionCardStyle);
+            GUILayout.EndVertical();
+            GUILayout.EndHorizontal();
+            GUILayout.Space(8f);
+            return clicked;
         }
 
         private void DrawElementalRuleLine(Color accentColor, string title, string description)
@@ -273,6 +369,14 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
+            // The controller ignores input from seats the human doesn't hold,
+            // so showing the button during an AI turn would just look broken.
+            if (!controller.IsActiveSeatHuman)
+            {
+                GUILayout.Label("La IA está pensando...", statusStyle);
+                return;
+            }
+
             if (GUILayout.Button("ROLL DICE  (Space)", primaryButtonStyle))
             {
                 controller.RequestRoll();
@@ -284,6 +388,12 @@ namespace ElementalLudo.Gameplay
 
         private void DrawAwaitingAction(Color playerColor)
         {
+            if (!controller.IsActiveSeatHuman)
+            {
+                GUILayout.Label("La IA está eligiendo su jugada...", statusStyle);
+                return;
+            }
+
             GUILayout.Label("LEGAL ACTIONS", sectionLabelStyle);
             GUILayout.Space(4f);
 

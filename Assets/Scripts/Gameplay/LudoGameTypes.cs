@@ -16,6 +16,15 @@ namespace ElementalLudo.Gameplay
         Move
     }
 
+    public enum LudoGameMode
+    {
+        /// <summary>One human plays all four colors.</summary>
+        HotSeat,
+
+        /// <summary>Human picks an element; the other three seats are AI.</summary>
+        SinglePlayer
+    }
+
     public readonly struct LudoLegalAction
     {
         public Token Token { get; }

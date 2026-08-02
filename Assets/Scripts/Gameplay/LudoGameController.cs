@@ -23,7 +23,13 @@ namespace ElementalLudo.Gameplay
         [SerializeField] private Dice dice;
         [Tooltip("Must implement IPlayerController (e.g. HumanPlayerController). Left empty, a HumanPlayerController is found or created automatically.")]
         [SerializeField] private MonoBehaviour playerControllerSource;
+        [Tooltip("Must implement IPlayerController (e.g. AIPlayerController). Left empty, an AIPlayerController is found or created automatically.")]
+        [SerializeField] private MonoBehaviour aiControllerSource;
         [SerializeField] private LudoReachableCellsHighlighter reachableCellsHighlighter;
+
+        [Header("Mode")]
+        [Tooltip("SinglePlayer holds the game at startup until an element is picked, then hands the other three seats to the AI.")]
+        [SerializeField] private LudoGameMode mode = LudoGameMode.SinglePlayer;
 
         [Header("Turn Behaviour")]
         [SerializeField] private bool autoExecuteSingleAction = true;
@@ -52,7 +58,9 @@ namespace ElementalLudo.Gameplay
             new List<ControllerSubscription>(4);
 
         private IPlayerController humanController;
+        private IPlayerController aiController;
         private BoardState boardState;
+        private bool awaitingSetup;
         private int activePlayerIndex;
         private int rolledValue;
         private bool actionPerformed;
@@ -76,6 +84,17 @@ namespace ElementalLudo.Gameplay
         public bool IsGameOver => winner != null;
         public bool IsInitialized => initialized;
         public bool IsDiceRolling => dice != null && dice.IsRolling;
+        public LudoGameMode Mode => mode;
+
+        /// <summary>True while the game is held waiting for an element pick.</summary>
+        public bool AwaitingSetup => awaitingSetup;
+
+        /// <summary>Seats in turn order, for UI that needs each one's element and color.</summary>
+        public IReadOnlyList<LudoPlayerState> Players => players;
+
+        /// <summary>False while an AI seat is taking its turn.</summary>
+        public bool IsActiveSeatHuman =>
+            initialized && ActiveController != null && ActiveController == humanController;
         public string StatusMessage => statusMessage;
         public bool AutoRoll
         {
@@ -175,9 +194,110 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
+            if (mode == LudoGameMode.SinglePlayer)
+            {
+                // Hold everything until an element is picked; seats can't be
+                // handed out before we know which one the human wants.
+                awaitingSetup = true;
+                dice.SetRollEnabled(false);
+                statusMessage = "Elige tu elemento para empezar.";
+                return;
+            }
+
             AssignAllSeatsTo(humanController);
             SubscribePlayerControllers();
             RestartGame();
+        }
+
+        /// <summary>
+        /// Begins a one-player game: the seat matching <paramref name="humanElement"/>
+        /// is played by the human, the other three by the AI. Turns the
+        /// elemental rules on, since picking an element is meaningless
+        /// without them.
+        /// </summary>
+        public void StartSinglePlayer(LudoElement humanElement, LudoAIDifficulty difficulty)
+        {
+            if (!initialized)
+            {
+                return;
+            }
+
+            EnsureAIController();
+            if (aiController is AIPlayerController tunableAI)
+            {
+                tunableAI.Difficulty = difficulty;
+            }
+
+            AssignSeatsForSinglePlayer(humanElement);
+            SubscribePlayerControllers();
+
+            elementalModeEnabled = true;
+            awaitingSetup = false;
+            RestartGame();
+        }
+
+        private void AssignSeatsForSinglePlayer(LudoElement humanElement)
+        {
+            int humanSeat = -1;
+            for (int index = 0; index < players.Count; index++)
+            {
+                if (players[index].Element == humanElement)
+                {
+                    humanSeat = index;
+                    break;
+                }
+            }
+
+            if (humanSeat < 0)
+            {
+                Debug.LogError(
+                    $"No player is configured with element {humanElement}; " +
+                    "giving the human the first seat instead.",
+                    this);
+                humanSeat = 0;
+            }
+
+            UnsubscribePlayerControllers();
+            playerControllers.Clear();
+            for (int index = 0; index < players.Count; index++)
+            {
+                playerControllers.Add(index == humanSeat ? humanController : aiController);
+            }
+        }
+
+        private void EnsureAIController()
+        {
+            if (aiController != null)
+            {
+                return;
+            }
+
+            if (aiControllerSource != null)
+            {
+                aiController = aiControllerSource as IPlayerController;
+                if (aiController != null)
+                {
+                    return;
+                }
+
+                Debug.LogError(
+                    $"{aiControllerSource.name} does not implement IPlayerController.",
+                    this);
+            }
+
+            AIPlayerController found = FindFirstObjectByType<AIPlayerController>();
+            if (found == null)
+            {
+                GameObject controllerObject = new GameObject("AIPlayerController")
+                {
+                    hideFlags = HideFlags.DontSave
+                };
+                controllerObject.transform.SetParent(transform, false);
+                found = controllerObject.AddComponent<AIPlayerController>();
+            }
+
+            aiControllerSource = found;
+            aiController = found;
         }
 
         private void OnDisable()
@@ -315,7 +435,7 @@ namespace ElementalLudo.Gameplay
         [ContextMenu("Restart Game")]
         public void RestartGame()
         {
-            if (!initialized)
+            if (!initialized || awaitingSetup)
             {
                 return;
             }
@@ -1009,7 +1129,7 @@ namespace ElementalLudo.Gameplay
             }
         }
 
-        private static string SpanishColorName(string playerId)
+        public static string SpanishColorName(string playerId)
         {
             if (string.Equals(playerId, "red", StringComparison.OrdinalIgnoreCase))
             {
