@@ -16,6 +16,9 @@ namespace ElementalLudo.Gameplay
         private const float PanelWidth = 380f;
         private const float PanelMargin = 16f;
         private const float RulesPanelWidth = 300f;
+        private const float HistoryPanelWidth = 340f;
+        private const float HistoryPanelHeight = 300f;
+        private const int MaxHistoryEntries = 10;
 
         private static readonly Color LightningColor = new Color(0.9490196f, 0.827451f, 0.24313726f);
         private static readonly Color WaterColor = new Color(0.24313726f, 0.61960787f, 0.8117647f);
@@ -27,6 +30,8 @@ namespace ElementalLudo.Gameplay
 
         private readonly Dictionary<Color, Texture2D> textureCache =
             new Dictionary<Color, Texture2D>();
+        private readonly List<string> moveHistory = new List<string>(MaxHistoryEntries);
+        private string lastLoggedStatusMessage = string.Empty;
 
         private GUIStyle panelStyle;
         private GUIStyle titleStyle;
@@ -43,6 +48,7 @@ namespace ElementalLudo.Gameplay
         private GUIStyle toggleOffStyle;
         private GUIStyle winnerStyle;
         private GUIStyle ruleTitleStyle;
+        private GUIStyle historyLatestStyle;
         private bool stylesReady;
 
         private void Awake()
@@ -50,6 +56,32 @@ namespace ElementalLudo.Gameplay
             if (controller == null)
             {
                 controller = FindFirstObjectByType<LudoGameController>();
+            }
+        }
+
+        private void Update()
+        {
+            if (controller == null)
+            {
+                return;
+            }
+
+            string current = controller.StatusMessage;
+            if (current == lastLoggedStatusMessage)
+            {
+                return;
+            }
+
+            lastLoggedStatusMessage = current;
+            if (string.IsNullOrEmpty(current))
+            {
+                return;
+            }
+
+            moveHistory.Insert(0, current);
+            if (moveHistory.Count > MaxHistoryEntries)
+            {
+                moveHistory.RemoveAt(moveHistory.Count - 1);
             }
         }
 
@@ -91,6 +123,8 @@ namespace ElementalLudo.Gameplay
             {
                 DrawElementalRulesPanel();
             }
+
+            DrawHistoryPanel();
         }
 
         private void DrawHeader(Color playerColor)
@@ -193,6 +227,35 @@ namespace ElementalLudo.Gameplay
             GUILayout.EndVertical();
             GUILayout.EndHorizontal();
             GUILayout.Space(6f);
+        }
+
+        private void DrawHistoryPanel()
+        {
+            GUILayout.BeginArea(
+                new Rect(
+                    PanelMargin,
+                    Screen.height - HistoryPanelHeight - PanelMargin,
+                    HistoryPanelWidth,
+                    HistoryPanelHeight),
+                panelStyle);
+
+            GUILayout.Label("MOVE HISTORY", sectionLabelStyle);
+            GUILayout.Space(6f);
+
+            if (moveHistory.Count == 0)
+            {
+                GUILayout.Label("Nothing has happened yet.", hintStyle);
+            }
+            else
+            {
+                for (int index = 0; index < moveHistory.Count; index++)
+                {
+                    GUIStyle style = index == 0 ? historyLatestStyle : hintStyle;
+                    GUILayout.Label(moveHistory[index], style);
+                }
+            }
+
+            GUILayout.EndArea();
         }
 
         private void DrawPhaseContent(Color playerColor)
@@ -417,6 +480,14 @@ namespace ElementalLudo.Gameplay
             ruleTitleStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 12,
+                fontStyle = FontStyle.Bold,
+                wordWrap = true,
+                normal = { textColor = Color.white }
+            };
+
+            historyLatestStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 11,
                 fontStyle = FontStyle.Bold,
                 wordWrap = true,
                 normal = { textColor = Color.white }
