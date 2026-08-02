@@ -30,8 +30,6 @@ namespace ElementalLudo.Gameplay
 
         private readonly Dictionary<Color, Texture2D> textureCache =
             new Dictionary<Color, Texture2D>();
-        private readonly List<string> moveHistory = new List<string>(MaxHistoryEntries);
-        private string lastLoggedStatusMessage = string.Empty;
 
         private GUIStyle panelStyle;
         private GUIStyle titleStyle;
@@ -56,32 +54,6 @@ namespace ElementalLudo.Gameplay
             if (controller == null)
             {
                 controller = FindFirstObjectByType<LudoGameController>();
-            }
-        }
-
-        private void Update()
-        {
-            if (controller == null)
-            {
-                return;
-            }
-
-            string current = controller.StatusMessage;
-            if (current == lastLoggedStatusMessage)
-            {
-                return;
-            }
-
-            lastLoggedStatusMessage = current;
-            if (string.IsNullOrEmpty(current))
-            {
-                return;
-            }
-
-            moveHistory.Insert(0, current);
-            if (moveHistory.Count > MaxHistoryEntries)
-            {
-                moveHistory.RemoveAt(moveHistory.Count - 1);
             }
         }
 
@@ -242,16 +214,18 @@ namespace ElementalLudo.Gameplay
             GUILayout.Label("MOVE HISTORY", sectionLabelStyle);
             GUILayout.Space(6f);
 
-            if (moveHistory.Count == 0)
+            IReadOnlyList<string> history = controller.MoveHistory;
+            if (history.Count == 0)
             {
                 GUILayout.Label("Nothing has happened yet.", hintStyle);
             }
             else
             {
-                for (int index = 0; index < moveHistory.Count; index++)
+                int shownCount = Mathf.Min(history.Count, MaxHistoryEntries);
+                for (int index = 0; index < shownCount; index++)
                 {
                     GUIStyle style = index == 0 ? historyLatestStyle : hintStyle;
-                    GUILayout.Label(moveHistory[index], style);
+                    GUILayout.Label(history[index], style);
                 }
             }
 

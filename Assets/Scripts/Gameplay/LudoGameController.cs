@@ -35,11 +35,14 @@ namespace ElementalLudo.Gameplay
         [Min(0f)]
         [SerializeField] private float movementStepDuration = 0.11f;
 
+        private const int MaxMoveHistoryEntries = 30;
+
         private readonly List<LudoPlayerState> players = new List<LudoPlayerState>(4);
         private readonly List<LudoLegalAction> legalActions =
             new List<LudoLegalAction>(4);
         private readonly Dictionary<Token, Vector3> homePositions =
             new Dictionary<Token, Vector3>(16);
+        private readonly List<string> moveHistory = new List<string>(MaxMoveHistoryEntries);
 
         private IPlayerController playerController;
         private BoardState boardState;
@@ -61,6 +64,7 @@ namespace ElementalLudo.Gameplay
         public int RolledValue => rolledValue;
         public LudoTurnPhase Phase => phase;
         public IReadOnlyList<LudoLegalAction> LegalActions => legalActions;
+        public IReadOnlyList<string> MoveHistory => moveHistory;
         public PlayerStyle Winner => winner;
         public bool IsGameOver => winner != null;
         public bool IsInitialized => initialized;
@@ -227,6 +231,7 @@ namespace ElementalLudo.Gameplay
             lastMovedToken = null;
             winner = null;
             legalActions.Clear();
+            moveHistory.Clear();
             ClearReachableCells();
             phase = LudoTurnPhase.AwaitingRoll;
             dice.SetRollEnabled(true);
@@ -355,6 +360,8 @@ namespace ElementalLudo.Gameplay
             dice.SetRollEnabled(false);
             actionPerformed = false;
             captureHappenedThisTurn = false;
+
+            LogMove($"Turno de {SpanishColorName(ActivePlayer.PlayerId)}. Tira el dado... {rolledValue}");
 
             if (rolledValue == 6)
             {
@@ -499,6 +506,8 @@ namespace ElementalLudo.Gameplay
                 CaptureOpponentTokensOnCell(player, token);
                 RepositionSameColorTokens(player);
                 statusMessage = $"{token.name} entered the starting square.";
+                LogMove($"Token {SpanishColorName(token.OwnerStyle.PlayerId)} {token.TokenId} sale de casa.");
+                LogBarrierIfFormed(player, token, 0);
             }
             else
             {
@@ -520,11 +529,14 @@ namespace ElementalLudo.Gameplay
                 {
                     boardState.SetFinished(token, action.DestinationRouteIndex);
                     statusMessage = $"{token.name} reached the goal.";
+                    LogMove($"Token {SpanishColorName(token.OwnerStyle.PlayerId)} {token.TokenId} llega a la meta.");
                 }
                 else
                 {
                     statusMessage =
                         $"{token.name} moved {rolledValue} spaces.";
+                    LogMove($"Token {SpanishColorName(token.OwnerStyle.PlayerId)} {token.TokenId} se mueve a la casilla {action.DestinationRouteIndex}.");
+                    LogBarrierIfFormed(player, token, action.DestinationRouteIndex);
                 }
             }
 
@@ -762,6 +774,9 @@ namespace ElementalLudo.Gameplay
                 captureHappenedThisTurn = true;
                 statusMessage =
                     $"{movingToken.name} captured {token.name}!";
+                LogMove(
+                    $"Token {SpanishColorName(movingToken.OwnerStyle.PlayerId)} {movingToken.TokenId} " +
+                    $"captura a Token {SpanishColorName(token.OwnerStyle.PlayerId)} {token.TokenId}.");
             }
         }
 
@@ -836,6 +851,51 @@ namespace ElementalLudo.Gameplay
             }
 
             return char.ToUpperInvariant(playerId[0]) + playerId.Substring(1);
+        }
+
+        private static string SpanishColorName(string playerId)
+        {
+            if (string.Equals(playerId, "red", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Rojo";
+            }
+
+            if (string.Equals(playerId, "blue", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Azul";
+            }
+
+            if (string.Equals(playerId, "yellow", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Amarillo";
+            }
+
+            if (string.Equals(playerId, "green", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Verde";
+            }
+
+            return DisplayName(playerId);
+        }
+
+        private void LogMove(string message)
+        {
+            moveHistory.Insert(0, message);
+            if (moveHistory.Count > MaxMoveHistoryEntries)
+            {
+                moveHistory.RemoveAt(moveHistory.Count - 1);
+            }
+        }
+
+        private void LogBarrierIfFormed(LudoPlayerState player, Token token, int routeIndex)
+        {
+            Vector2Int cell = player.Route[routeIndex];
+            if (LudoRulesEngine.CountSameColorTokensOnCell(boardState, player, cell) == 2)
+            {
+                LogMove(
+                    $"Token {SpanishColorName(token.OwnerStyle.PlayerId)} {token.TokenId} " +
+                    $"forma una barrera en la casilla {routeIndex}.");
+            }
         }
     }
 }
