@@ -15,7 +15,6 @@ namespace ElementalLudo.Board
         private const int CellLabelCount = 68;
         private const int CellLabelStartIndex = 29;
 
-        private static readonly Color BoardWhite = new Color32(248, 247, 242, 255);
         private static readonly Color GridColor = new Color32(73, 78, 78, 255);
         private static readonly Color Red = new Color32(211, 17, 54, 255);
         private static readonly Color Blue = new Color32(62, 158, 207, 255);
@@ -273,11 +272,8 @@ namespace ElementalLudo.Board
             DrawCenter(lineWidth);
             DrawSafeCells();
 
-            float homeCenter = LudoBoardLayout.HomeLogicalCenter;
-            DrawHome(new Vector2(-homeCenter, homeCenter), Red);
-            DrawHome(new Vector2(homeCenter, homeCenter), Blue);
-            DrawHome(new Vector2(-homeCenter, -homeCenter), Green);
-            DrawHome(new Vector2(homeCenter, -homeCenter), Yellow);
+            // Home corners are drawn by LudoBoardTerrainRenderer now, as
+            // elemental biome plates instead of flat colored discs.
 
             AddLine(
                 new Vector2(-outerEdge, -outerEdge),
@@ -438,16 +434,6 @@ namespace ElementalLudo.Board
                 -0.06f);
         }
 
-        private void DrawHome(Vector2 center, Color homeColor)
-        {
-            float scale = LudoBoardLayout.HomeSizeScale;
-            AddCircle(center, 2.04f * scale, GridColor, 0.015f);
-            AddCircle(center, 1.98f * scale, homeColor, 0.005f);
-            AddRing(center, 1.24f * scale, 1.17f * scale, BoardWhite, -0.015f);
-            AddCircle(center, 0.62f * scale, GridColor, -0.02f);
-            AddCircle(center, 0.55f * scale, BoardWhite, -0.03f);
-        }
-
         private static Color Lighten(Color color)
         {
             return Color.Lerp(color, Color.white, 0.22f);
@@ -506,52 +492,6 @@ namespace ElementalLudo.Board
             triangles.Add(firstVertex);
             triangles.Add(firstVertex + 3);
             triangles.Add(firstVertex + 2);
-        }
-
-        private void AddCircle(Vector2 center, float radius, Color color, float depth)
-        {
-            for (int segment = 0; segment < CircleSegments; segment++)
-            {
-                float startAngle = Mathf.PI * 2f * segment / CircleSegments;
-                float endAngle = Mathf.PI * 2f * (segment + 1) / CircleSegments;
-
-                AddTriangle(
-                    center,
-                    center + new Vector2(Mathf.Cos(startAngle), Mathf.Sin(startAngle)) * radius,
-                    center + new Vector2(Mathf.Cos(endAngle), Mathf.Sin(endAngle)) * radius,
-                    color,
-                    depth);
-            }
-        }
-
-        private void AddRing(
-            Vector2 center,
-            float outerRadius,
-            float innerRadius,
-            Color color,
-            float depth)
-        {
-            for (int segment = 0; segment < CircleSegments; segment++)
-            {
-                float startAngle = Mathf.PI * 2f * segment / CircleSegments;
-                float endAngle = Mathf.PI * 2f * (segment + 1) / CircleSegments;
-                Vector2 startDirection = new Vector2(Mathf.Cos(startAngle), Mathf.Sin(startAngle));
-                Vector2 endDirection = new Vector2(Mathf.Cos(endAngle), Mathf.Sin(endAngle));
-
-                int firstVertex = vertices.Count;
-                vertices.Add(ToVector3(center + startDirection * innerRadius, depth));
-                vertices.Add(ToVector3(center + startDirection * outerRadius, depth));
-                vertices.Add(ToVector3(center + endDirection * outerRadius, depth));
-                vertices.Add(ToVector3(center + endDirection * innerRadius, depth));
-                AddColors(color, 4);
-
-                triangles.Add(firstVertex);
-                triangles.Add(firstVertex + 2);
-                triangles.Add(firstVertex + 1);
-                triangles.Add(firstVertex);
-                triangles.Add(firstVertex + 3);
-                triangles.Add(firstVertex + 2);
-            }
         }
 
         private void AddWorldCircle(Vector2 center, float radius, Color color, float depth)

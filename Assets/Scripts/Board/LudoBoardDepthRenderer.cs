@@ -58,7 +58,6 @@ namespace ElementalLudo.Board
             {
                 DrawRaisedTrack();
                 DrawRaisedCenter();
-                DrawRaisedHomes();
                 DrawRaisedSafeCells();
             }
 
@@ -170,52 +169,6 @@ namespace ElementalLudo.Board
             AddTrianglePrism(topRight, bottomRight, center, -0.23f, 0.02f, Blue);
             AddTrianglePrism(bottomRight, bottomLeft, center, -0.23f, 0.02f, Yellow);
             AddTrianglePrism(bottomLeft, topLeft, center, -0.23f, 0.02f, Green);
-        }
-
-        private void DrawRaisedHomes()
-        {
-            float homeCenter = LudoBoardLayout.HomeLogicalCenter;
-            DrawRaisedHome(new Vector2(-homeCenter, homeCenter), Red);
-            DrawRaisedHome(new Vector2(homeCenter, homeCenter), Blue);
-            DrawRaisedHome(new Vector2(-homeCenter, -homeCenter), Green);
-            DrawRaisedHome(new Vector2(homeCenter, -homeCenter), Yellow);
-        }
-
-        private void DrawRaisedHome(Vector2 center, Color color)
-        {
-            float scale = LudoBoardLayout.HomeSizeScale;
-            AddRingPrism(
-                center,
-                2.06f * scale,
-                2.0f * scale,
-                -0.305f,
-                0.03f,
-                GridColor,
-                Shade(GridColor, 0.4f));
-            AddRingPrism(
-                center,
-                2f * scale,
-                0.61f * scale,
-                -0.29f,
-                0.025f,
-                color,
-                Shade(color, 0.31f));
-            AddRingPrism(
-                center,
-                1.25f * scale,
-                1.16f * scale,
-                -0.335f,
-                -0.295f,
-                BoardWhite,
-                Shade(BoardWhite, 0.22f));
-            AddRingPrism(
-                center,
-                0.66f * scale,
-                0.60f * scale,
-                -0.325f,
-                -0.285f,
-                GridColor,
-                Shade(GridColor, 0.35f));
         }
 
         private void DrawRaisedSafeCells()
@@ -371,52 +324,6 @@ namespace ElementalLudo.Board
 
                 AddTriangle(frontCenter, frontStart, frontEnd, frontColor);
                 AddQuad(frontStart, backStart, backEnd, frontEnd, sideColor);
-            }
-        }
-
-        private void AddRingPrism(
-            Vector2 center,
-            float outerRadius,
-            float innerRadius,
-            float frontDepth,
-            float backDepth,
-            Color frontColor,
-            Color sideColor)
-        {
-            for (int segment = 0; segment < CircleSegments; segment++)
-            {
-                float startAngle = Mathf.PI * 2f * segment / CircleSegments;
-                float endAngle = Mathf.PI * 2f * (segment + 1) / CircleSegments;
-                Vector2 startDirection = new Vector2(Mathf.Cos(startAngle), Mathf.Sin(startAngle));
-                Vector2 endDirection = new Vector2(Mathf.Cos(endAngle), Mathf.Sin(endAngle));
-
-                Vector3 innerFrontStart = ToVector3(center + startDirection * innerRadius, frontDepth);
-                Vector3 outerFrontStart = ToVector3(center + startDirection * outerRadius, frontDepth);
-                Vector3 outerFrontEnd = ToVector3(center + endDirection * outerRadius, frontDepth);
-                Vector3 innerFrontEnd = ToVector3(center + endDirection * innerRadius, frontDepth);
-                Vector3 innerBackStart = ToVector3(center + startDirection * innerRadius, backDepth);
-                Vector3 outerBackStart = ToVector3(center + startDirection * outerRadius, backDepth);
-                Vector3 outerBackEnd = ToVector3(center + endDirection * outerRadius, backDepth);
-                Vector3 innerBackEnd = ToVector3(center + endDirection * innerRadius, backDepth);
-
-                AddQuad(
-                    innerFrontStart,
-                    outerFrontStart,
-                    outerFrontEnd,
-                    innerFrontEnd,
-                    frontColor);
-                AddQuad(
-                    outerFrontStart,
-                    outerBackStart,
-                    outerBackEnd,
-                    outerFrontEnd,
-                    sideColor);
-                AddQuad(
-                    innerFrontEnd,
-                    innerBackEnd,
-                    innerBackStart,
-                    innerFrontStart,
-                    Shade(sideColor, 0.15f));
             }
         }
 
