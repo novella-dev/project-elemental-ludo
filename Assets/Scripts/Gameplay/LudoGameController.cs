@@ -68,6 +68,7 @@ namespace ElementalLudo.Gameplay
         public PlayerStyle Winner => winner;
         public bool IsGameOver => winner != null;
         public bool IsInitialized => initialized;
+        public bool IsDiceRolling => dice != null && dice.IsRolling;
         public string StatusMessage => statusMessage;
         public bool AutoRoll
         {
@@ -213,6 +214,12 @@ namespace ElementalLudo.Gameplay
             }
 
             StopAllCoroutines();
+
+            // StopAllCoroutines only covers this component; a roll animation
+            // lives on the Dice and would otherwise announce its result into
+            // the freshly restarted game.
+            dice.CancelRoll();
+
             foreach (LudoPlayerState player in players)
             {
                 foreach (Token token in player.Tokens)
@@ -235,6 +242,7 @@ namespace ElementalLudo.Gameplay
             ClearReachableCells();
             phase = LudoTurnPhase.AwaitingRoll;
             dice.SetRollEnabled(true);
+            SyncDiceAccent();
             statusMessage =
                 $"{DisplayName(ActivePlayer.PlayerId)} player's turn. Roll the die.";
         }
@@ -425,6 +433,15 @@ namespace ElementalLudo.Gameplay
                 0.25f);
             highlightColor.a = 0.5f;
             reachableCellsHighlighter.SetCells(reachableCells, highlightColor);
+        }
+
+        /// <summary>Tints the die with whoever is about to roll it.</summary>
+        private void SyncDiceAccent()
+        {
+            if (dice != null && ActivePlayer != null)
+            {
+                dice.SetAccentColor(ActivePlayer.TokenColor);
+            }
         }
 
         private void ClearReachableCells()
@@ -646,6 +663,7 @@ namespace ElementalLudo.Gameplay
 
             phase = LudoTurnPhase.AwaitingRoll;
             dice.SetRollEnabled(true);
+            SyncDiceAccent();
             SetTokenInteractionStates(false, true);
 
             if (autoRoll)

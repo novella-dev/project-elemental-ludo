@@ -16,10 +16,18 @@ namespace ElementalLudo.DiceSystem
         private const float PipRadius = 0.065f;
         private const float PipSpacing = 0.18f;
 
+        private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+
         private readonly List<Vector3> vertices = new List<Vector3>(1200);
         private readonly List<Vector3> normals = new List<Vector3>(1200);
         private readonly List<int> bodyTriangles = new List<int>(1800);
         private readonly List<int> pipTriangles = new List<int>(1800);
+
+        private MaterialPropertyBlock propertyBlock;
+        private Vector3 restLocalPosition;
+        private bool restCaptured;
+        private Color baseBodyColor = new Color(0.93f, 0.92f, 0.88f, 1f);
+        private bool baseBodyColorCached;
 
         private Mesh diceMesh;
 
@@ -83,11 +91,91 @@ namespace ElementalLudo.DiceSystem
             meshRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
         }
 
+        /// <summary>
+        /// Settles the die: the requested face turns to camera and any roll
+        /// hop is cleared.
+        /// </summary>
         public void ShowValue(int value)
         {
-            transform.localRotation = Quaternion.FromToRotation(
+            EnsureRestCaptured();
+            transform.localRotation = RotationForValue(value);
+            transform.localPosition = restLocalPosition;
+        }
+
+        /// <summary>
+        /// One frame of a roll: an arbitrary tumble orientation lifted
+        /// <paramref name="hopHeight"/> above the resting spot (the board's
+        /// "up" is -Z, matching the rest of the scene).
+        /// </summary>
+        public void ShowRoll(Quaternion rotation, float hopHeight)
+        {
+            EnsureRestCaptured();
+            transform.localRotation = rotation;
+            transform.localPosition = new Vector3(
+                restLocalPosition.x,
+                restLocalPosition.y,
+                restLocalPosition.z - hopHeight);
+        }
+
+        /// <summary>
+        /// Orientation that puts <paramref name="value"/>'s face toward the
+        /// camera. Exposed so a roll animation can ease into the exact
+        /// landing pose instead of snapping to it.
+        /// </summary>
+        public static Quaternion RotationForValue(int value)
+        {
+            return Quaternion.FromToRotation(
                 FaceNormal(Mathf.Clamp(value, 1, 6)),
                 Vector3.back);
+        }
+
+        /// <summary>
+        /// Tints the die body (submesh 0, pips untouched) toward
+        /// <paramref name="accent"/>. Uses a property block so the shared
+        /// material asset is never modified.
+        /// </summary>
+        public void SetAccentColor(Color accent, float strength)
+        {
+            MeshRenderer meshRenderer = GetComponent<MeshRenderer>();
+            if (meshRenderer == null)
+            {
+                return;
+            }
+
+            if (!baseBodyColorCached)
+            {
+                Material[] materials = meshRenderer.sharedMaterials;
+                if (materials.Length > 0 &&
+                    materials[0] != null &&
+                    materials[0].HasProperty(BaseColorId))
+                {
+                    baseBodyColor = materials[0].GetColor(BaseColorId);
+                }
+
+                baseBodyColorCached = true;
+            }
+
+            if (propertyBlock == null)
+            {
+                propertyBlock = new MaterialPropertyBlock();
+            }
+
+            meshRenderer.GetPropertyBlock(propertyBlock, 0);
+            propertyBlock.SetColor(
+                BaseColorId,
+                Color.Lerp(baseBodyColor, accent, Mathf.Clamp01(strength)));
+            meshRenderer.SetPropertyBlock(propertyBlock, 0);
+        }
+
+        private void EnsureRestCaptured()
+        {
+            if (restCaptured)
+            {
+                return;
+            }
+
+            restLocalPosition = transform.localPosition;
+            restCaptured = true;
         }
 
         private void AddRoundedFace(Vector3 faceNormal, Vector3 horizontal, Vector3 vertical)

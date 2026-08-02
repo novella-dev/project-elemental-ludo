@@ -265,6 +265,14 @@ namespace ElementalLudo.Gameplay
 
         private void DrawAwaitingRoll()
         {
+            // The die keeps tumbling for a moment before it reports a result;
+            // hide the button meanwhile so it can't look unresponsive.
+            if (controller.IsDiceRolling)
+            {
+                GUILayout.Label("Rolling the die...", statusStyle);
+                return;
+            }
+
             if (GUILayout.Button("ROLL DICE  (Space)", primaryButtonStyle))
             {
                 controller.RequestRoll();
