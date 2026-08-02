@@ -15,6 +15,12 @@ namespace ElementalLudo.Gameplay
     {
         private const float PanelWidth = 380f;
         private const float PanelMargin = 16f;
+        private const float RulesPanelWidth = 300f;
+
+        private static readonly Color LightningColor = new Color(0.9490196f, 0.827451f, 0.24313726f);
+        private static readonly Color WaterColor = new Color(0.24313726f, 0.61960787f, 0.8117647f);
+        private static readonly Color FireColor = new Color(0.827451f, 0.06666667f, 0.21176471f);
+        private static readonly Color PlantColor = new Color(0.039215688f, 0.4117647f, 0.28235295f);
 
         [SerializeField] private LudoGameController controller;
         [SerializeField] private bool showPanel = true;
@@ -33,9 +39,10 @@ namespace ElementalLudo.Gameplay
         private GUIStyle accentBarStyle;
         private GUIStyle actionCardStyle;
         private GUIStyle primaryButtonStyle;
-        private GUIStyle autoToggleOnStyle;
-        private GUIStyle autoToggleOffStyle;
+        private GUIStyle toggleOnStyle;
+        private GUIStyle toggleOffStyle;
         private GUIStyle winnerStyle;
+        private GUIStyle ruleTitleStyle;
         private bool stylesReady;
 
         private void Awake()
@@ -74,10 +81,16 @@ namespace ElementalLudo.Gameplay
             DrawHeader(playerColor);
             DrawStatusRow();
             DrawAutoRollToggle();
+            DrawElementalToggle();
             GUILayout.Space(10f);
             DrawPhaseContent(playerColor);
 
             GUILayout.EndArea();
+
+            if (controller.ElementalModeEnabled)
+            {
+                DrawElementalRulesPanel();
+            }
         }
 
         private void DrawHeader(Color playerColor)
@@ -112,11 +125,74 @@ namespace ElementalLudo.Gameplay
         {
             GUILayout.Space(6f);
             string autoLabel = controller.AutoRoll ? "AUTO-ROLL: ON" : "AUTO-ROLL: OFF";
-            GUIStyle style = controller.AutoRoll ? autoToggleOnStyle : autoToggleOffStyle;
+            GUIStyle style = controller.AutoRoll ? toggleOnStyle : toggleOffStyle;
             if (GUILayout.Button(autoLabel, style))
             {
                 controller.AutoRoll = !controller.AutoRoll;
             }
+        }
+
+        private void DrawElementalToggle()
+        {
+            GUILayout.Space(4f);
+            string label = controller.ElementalModeEnabled
+                ? "ELEMENTAL MODE: ON"
+                : "ELEMENTAL MODE: OFF";
+            GUIStyle style = controller.ElementalModeEnabled ? toggleOnStyle : toggleOffStyle;
+            if (GUILayout.Button(label, style))
+            {
+                controller.ElementalModeEnabled = !controller.ElementalModeEnabled;
+            }
+        }
+
+        private void DrawElementalRulesPanel()
+        {
+            GUILayout.BeginArea(
+                new Rect(
+                    Screen.width - RulesPanelWidth - PanelMargin,
+                    PanelMargin,
+                    RulesPanelWidth,
+                    320f),
+                panelStyle);
+
+            GUILayout.Label("ELEMENTAL RULES", sectionLabelStyle);
+            GUILayout.Space(6f);
+
+            DrawElementalRuleLine(
+                LightningColor,
+                "Lightning (Yellow)",
+                "Move distance is roll + 1. Leaving home still needs a 5, and bonus turns/three-sixes still use the real roll.");
+            DrawElementalRuleLine(
+                WaterColor,
+                "Water (Blue)",
+                "Ignores barriers of any color on its own moves. A water barrier still blocks everyone else normally.");
+            DrawElementalRuleLine(
+                FireColor,
+                "Fire (Red)",
+                "Captures on safe cells too — for Fire, no cell is safe for rivals.");
+            DrawElementalRuleLine(
+                PlantColor,
+                "Plant (Green)",
+                "Immune to captures from Water specifically. Fire and Lightning still capture it normally.");
+
+            GUILayout.EndArea();
+        }
+
+        private void DrawElementalRuleLine(Color accentColor, string title, string description)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Box(
+                string.Empty,
+                MakeAccentStyle(accentColor),
+                GUILayout.Width(4f),
+                GUILayout.ExpandHeight(true));
+            GUILayout.Space(6f);
+            GUILayout.BeginVertical();
+            GUILayout.Label(title, ruleTitleStyle);
+            GUILayout.Label(description, hintStyle);
+            GUILayout.EndVertical();
+            GUILayout.EndHorizontal();
+            GUILayout.Space(6f);
         }
 
         private void DrawPhaseContent(Color playerColor)
@@ -306,7 +382,7 @@ namespace ElementalLudo.Gameplay
                 }
             };
 
-            autoToggleOnStyle = new GUIStyle(GUI.skin.button)
+            toggleOnStyle = new GUIStyle(GUI.skin.button)
             {
                 fontSize = 11,
                 fontStyle = FontStyle.Bold,
@@ -318,7 +394,7 @@ namespace ElementalLudo.Gameplay
                 }
             };
 
-            autoToggleOffStyle = new GUIStyle(GUI.skin.button)
+            toggleOffStyle = new GUIStyle(GUI.skin.button)
             {
                 fontSize = 11,
                 fontStyle = FontStyle.Bold,
@@ -335,6 +411,14 @@ namespace ElementalLudo.Gameplay
                 fontSize = 22,
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = Color.white }
+            };
+
+            ruleTitleStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 12,
+                fontStyle = FontStyle.Bold,
+                wordWrap = true,
                 normal = { textColor = Color.white }
             };
 
