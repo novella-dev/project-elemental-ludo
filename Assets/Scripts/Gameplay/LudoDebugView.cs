@@ -205,7 +205,7 @@ namespace ElementalLudo.Gameplay
         {
             GUILayout.BeginArea(
                 new Rect(
-                    PanelMargin,
+                    Screen.width - HistoryPanelWidth - PanelMargin,
                     Screen.height - HistoryPanelHeight - PanelMargin,
                     HistoryPanelWidth,
                     HistoryPanelHeight),
