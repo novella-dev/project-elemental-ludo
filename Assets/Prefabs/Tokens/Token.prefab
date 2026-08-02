@@ -177,6 +177,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ElementalLudo.Tokens.Token
   tokenId: 0
   ownerStyle: {fileID: 0}
-  state: 0
-  routeIndex: -1
   visual: {fileID: 7963503782701835108}
