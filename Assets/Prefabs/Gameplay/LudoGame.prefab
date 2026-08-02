@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 5958769230818096993}
   - component: {fileID: 4762744016682198339}
+  - component: {fileID: 820885446124912160}
   m_Layer: 0
   m_Name: LudoGame
   m_TagString: Untagged
@@ -42,11 +43,25 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 915da59db2f44f07ad786b042e93b7c3, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::ElementalLudo.Gameplay.LudoGameController
   dice: {fileID: 0}
-  inputCamera: {fileID: 0}
+  inputRouter: {fileID: 0}
+  reachableCellsHighlighter: {fileID: 0}
   autoExecuteSingleAction: 1
   noMoveMessageDuration: 1.1
   movementStepDuration: 0.11
-  showRuntimePanel: 1
+--- !u!114 &820885446124912160
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7311671939316891308}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 58847a9eb098675532e9dc2dc9c8746e, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::ElementalLudo.Gameplay.LudoDebugView
+  controller: {fileID: 4762744016682198339}
+  showPanel: 1
