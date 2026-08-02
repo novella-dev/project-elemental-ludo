@@ -33,9 +33,6 @@ namespace ElementalLudo.Gameplay
         [Min(0f)]
         [SerializeField] private float movementStepDuration = 0.11f;
 
-        [Header("Testing UI")]
-        [SerializeField] private bool showRuntimePanel = true;
-
         private readonly List<LudoPlayerState> players = new List<LudoPlayerState>(4);
         private readonly List<LudoLegalAction> legalActions =
             new List<LudoLegalAction>(4);
@@ -62,6 +59,13 @@ namespace ElementalLudo.Gameplay
         public IReadOnlyList<LudoLegalAction> LegalActions => legalActions;
         public PlayerStyle Winner => winner;
         public bool IsGameOver => winner != null;
+        public bool IsInitialized => initialized;
+        public string StatusMessage => statusMessage;
+        public bool AutoRoll
+        {
+            get => autoRoll;
+            set => autoRoll = value;
+        }
 
         private void Awake()
         {
@@ -804,82 +808,7 @@ namespace ElementalLudo.Gameplay
             }
         }
 
-        private void OnGUI()
-        {
-            if (!showRuntimePanel || !initialized)
-            {
-                return;
-            }
-
-            GUILayout.BeginArea(new Rect(16f, 16f, 330f, 420f), GUI.skin.box);
-            GUILayout.Label("ELEMENTAL LUDO", GUI.skin.label);
-
-            Color previousColor = GUI.color;
-            GUI.color = ActivePlayer.TokenColor;
-            GUILayout.Label(
-                $"Current player: {DisplayName(ActivePlayer.PlayerId)}",
-                GUI.skin.label);
-            GUI.color = previousColor;
-
-            if (rolledValue > 0)
-            {
-                GUILayout.Label($"Rolled value: {rolledValue}");
-            }
-
-            GUILayout.Label(statusMessage);
-            GUILayout.Space(8f);
-
-            string autoLabel = autoRoll ? "AUTO: ON" : "AUTO: OFF";
-            if (GUILayout.Button(autoLabel))
-            {
-                autoRoll = !autoRoll;
-            }
-
-            if (phase == LudoTurnPhase.GameOver)
-            {
-                GUILayout.Label(
-                    $"Winner: {DisplayName(winner.PlayerId)}",
-                    GUI.skin.label);
-                if (GUILayout.Button("Play Again"))
-                {
-                    RestartGame();
-                }
-            }
-            else if (phase == LudoTurnPhase.AwaitingRoll)
-            {
-                if (GUILayout.Button("Roll Dice  (Space)"))
-                {
-                    RequestRoll();
-                }
-
-                GUILayout.Label("You can also click the die on the board.");
-            }
-            else if (phase == LudoTurnPhase.AwaitingAction)
-            {
-                GUILayout.Label("Legal actions:");
-                for (int index = 0; index < legalActions.Count; index++)
-                {
-                    LudoLegalAction action = legalActions[index];
-                    string description = action.Type == LudoActionType.LeaveHome
-                        ? $"Take {action.Token.name} out of Home"
-                        : $"Move {action.Token.name} {rolledValue} spaces";
-                    if (GUILayout.Button(description))
-                    {
-                        TryExecuteAction(action);
-                    }
-                }
-
-                GUILayout.Label("Selectable tokens are highlighted on the board.");
-            }
-            else
-            {
-                GUILayout.Label("Resolving turn...");
-            }
-
-            GUILayout.EndArea();
-        }
-
-        private static string DisplayName(string playerId)
+        public static string DisplayName(string playerId)
         {
             if (string.IsNullOrEmpty(playerId))
             {
