@@ -23,6 +23,7 @@ namespace ElementalLudo.Gameplay
         [Header("Scene References")]
         [SerializeField] private Dice dice;
         [SerializeField] private Camera inputCamera;
+        [SerializeField] private LudoReachableCellsHighlighter reachableCellsHighlighter;
 
         [Header("Turn Behaviour")]
         [SerializeField] private bool autoExecuteSingleAction = true;
@@ -47,6 +48,9 @@ namespace ElementalLudo.Gameplay
         private bool actionPerformed;
         private bool autoRoll;
         private bool initialized;
+        private bool captureHappenedThisTurn;
+        private int consecutiveSixes;
+        private Token lastMovedToken;
         private PlayerStyle winner;
         private string statusMessage = string.Empty;
         private LudoTurnPhase phase = LudoTurnPhase.AwaitingRoll;
@@ -71,6 +75,29 @@ namespace ElementalLudo.Gameplay
             {
                 inputCamera = Camera.main;
             }
+
+            EnsureReachableCellsHighlighter();
+        }
+
+        private void EnsureReachableCellsHighlighter()
+        {
+            if (reachableCellsHighlighter != null)
+            {
+                return;
+            }
+
+            reachableCellsHighlighter = FindFirstObjectByType<LudoReachableCellsHighlighter>();
+            if (reachableCellsHighlighter != null)
+            {
+                return;
+            }
+
+            GameObject highlightObject = new GameObject("ReachableCellsHighlighter")
+            {
+                hideFlags = HideFlags.DontSave
+            };
+            highlightObject.transform.SetParent(transform, false);
+            reachableCellsHighlighter = highlightObject.AddComponent<LudoReachableCellsHighlighter>();
         }
 
         private void OnEnable()
@@ -145,8 +172,12 @@ namespace ElementalLudo.Gameplay
             activePlayerIndex = 0;
             rolledValue = 0;
             actionPerformed = false;
+            captureHappenedThisTurn = false;
+            consecutiveSixes = 0;
+            lastMovedToken = null;
             winner = null;
             legalActions.Clear();
+            ClearReachableCells();
             phase = LudoTurnPhase.AwaitingRoll;
             dice.SetRollEnabled(true);
             statusMessage =
@@ -267,6 +298,22 @@ namespace ElementalLudo.Gameplay
             rolledValue = Mathf.Clamp(value, 1, 6);
             dice.SetRollEnabled(false);
             actionPerformed = false;
+            captureHappenedThisTurn = false;
+
+            if (rolledValue == 6)
+            {
+                consecutiveSixes++;
+                if (consecutiveSixes >= 3)
+                {
+                    StartCoroutine(ApplyThreeSixesPenalty());
+                    return;
+                }
+            }
+            else
+            {
+                consecutiveSixes = 0;
+            }
+
             CalculateLegalActions();
 
             if (legalActions.Count == 0)
@@ -274,7 +321,7 @@ namespace ElementalLudo.Gameplay
                 phase = LudoTurnPhase.Resolving;
                 SetTokenInteractionStates(false);
                 statusMessage = "No valid moves.";
-                StartCoroutine(EndTurnAfterNoMove());
+                StartCoroutine(EndTurnAfterDelay(false));
                 return;
             }
 
@@ -284,9 +331,44 @@ namespace ElementalLudo.Gameplay
                 ? "One valid action."
                 : $"Choose one of {legalActions.Count} valid actions.";
 
+            HighlightReachableCells();
+
             if (legalActions.Count == 1 && autoExecuteSingleAction)
             {
                 TryExecuteAction(legalActions[0]);
+            }
+        }
+
+        private void HighlightReachableCells()
+        {
+            if (reachableCellsHighlighter == null)
+            {
+                return;
+            }
+
+            LudoPlayerState player = players[activePlayerIndex];
+            HashSet<Vector2Int> reachableCells = new HashSet<Vector2Int>();
+            foreach (LudoLegalAction action in legalActions)
+            {
+                Vector2Int cell = action.Type == LudoActionType.LeaveHome
+                    ? player.Route[0]
+                    : player.Route[action.DestinationRouteIndex];
+                reachableCells.Add(cell);
+            }
+
+            Color highlightColor = Color.Lerp(
+                ActivePlayer.TokenColor,
+                Color.white,
+                0.25f);
+            highlightColor.a = 0.5f;
+            reachableCellsHighlighter.SetCells(reachableCells, highlightColor);
+        }
+
+        private void ClearReachableCells()
+        {
+            if (reachableCellsHighlighter != null)
+            {
+                reachableCellsHighlighter.Clear();
             }
         }
 
@@ -348,6 +430,7 @@ namespace ElementalLudo.Gameplay
         {
             LudoPlayerState player = players[activePlayerIndex];
             Token token = action.Token;
+            lastMovedToken = token;
 
             if (action.Type == LudoActionType.LeaveHome)
             {
@@ -393,7 +476,10 @@ namespace ElementalLudo.Gameplay
                 yield break;
             }
 
-            EndTurn();
+            bool bonusTurn = captureHappenedThisTurn ||
+                             rolledValue == 6 ||
+                             (rolledValue == 5 && action.Type == LudoActionType.LeaveHome);
+            EndTurn(bonusTurn);
         }
 
         private IEnumerator MoveTokenTo(Token token, Vector3 destination)
@@ -422,27 +508,75 @@ namespace ElementalLudo.Gameplay
             token.transform.position = destination;
         }
 
-        private IEnumerator EndTurnAfterNoMove()
+        private IEnumerator ApplyThreeSixesPenalty()
+        {
+            phase = LudoTurnPhase.Resolving;
+            SetTokenInteractionStates(false);
+            ClearReachableCells();
+            consecutiveSixes = 0;
+
+            if (lastMovedToken != null && lastMovedToken.State != TokenState.Home)
+            {
+                lastMovedToken.SendHome();
+                lastMovedToken.transform.position = homePositions[lastMovedToken];
+                lastMovedToken.SetInteractionState(TokenInteractionState.Normal);
+
+                foreach (LudoPlayerState player in players)
+                {
+                    if (player.Style == lastMovedToken.OwnerStyle)
+                    {
+                        RepositionSameColorTokens(player);
+                        break;
+                    }
+                }
+
+                statusMessage = "Three sixes in a row! Last moved token returns home.";
+            }
+            else
+            {
+                statusMessage = "Three sixes in a row! Turn passes.";
+            }
+
+            lastMovedToken = null;
+            yield return new WaitForSecondsRealtime(noMoveMessageDuration);
+            EndTurn(false);
+        }
+
+        private IEnumerator EndTurnAfterDelay(bool bonusTurn)
         {
             if (noMoveMessageDuration > Mathf.Epsilon)
             {
                 yield return new WaitForSecondsRealtime(noMoveMessageDuration);
             }
 
-            EndTurn();
+            EndTurn(bonusTurn);
         }
 
-        private void EndTurn()
+        private void EndTurn(bool bonusTurn)
         {
             legalActions.Clear();
+            ClearReachableCells();
             rolledValue = 0;
             actionPerformed = false;
-            activePlayerIndex = (activePlayerIndex + 1) % players.Count;
+            captureHappenedThisTurn = false;
+
+            if (bonusTurn)
+            {
+                statusMessage =
+                    $"{DisplayName(ActivePlayer.PlayerId)} rolls again!";
+            }
+            else
+            {
+                activePlayerIndex = (activePlayerIndex + 1) % players.Count;
+                consecutiveSixes = 0;
+                lastMovedToken = null;
+                statusMessage =
+                    $"{DisplayName(ActivePlayer.PlayerId)} player's turn. Roll the die.";
+            }
+
             phase = LudoTurnPhase.AwaitingRoll;
             dice.SetRollEnabled(true);
             SetTokenInteractionStates(false, true);
-            statusMessage =
-                $"{DisplayName(ActivePlayer.PlayerId)} player's turn. Roll the die.";
 
             if (autoRoll)
             {
@@ -460,6 +594,7 @@ namespace ElementalLudo.Gameplay
         {
             winner = winningPlayer.Style;
             legalActions.Clear();
+            ClearReachableCells();
             rolledValue = 0;
             actionPerformed = true;
             phase = LudoTurnPhase.GameOver;
@@ -563,6 +698,7 @@ namespace ElementalLudo.Gameplay
                 token.SendHome();
                 token.transform.position = homePositions[token];
                 token.SetInteractionState(TokenInteractionState.Normal);
+                captureHappenedThisTurn = true;
                 statusMessage =
                     $"{movingToken.name} captured {token.name}!";
             }

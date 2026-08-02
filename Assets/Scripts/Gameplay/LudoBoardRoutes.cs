@@ -161,9 +161,26 @@ namespace ElementalLudo.Gameplay
             return Routes.TryGetValue(playerId, out route);
         }
 
+        public static bool TryGetRouteStartCell(string playerId, out Vector2Int startCell)
+        {
+            startCell = default;
+            if (!TryGetRoute(playerId, out Vector2Int[] route) || route.Length == 0)
+            {
+                return false;
+            }
+
+            startCell = route[0];
+            return true;
+        }
+
         public static bool IsSafeCell(Vector2Int cell)
         {
             return SafeCells.Contains(cell);
+        }
+
+        public static IEnumerable<Vector2Int> GetSafeCells()
+        {
+            return SafeCells;
         }
 
         private static Vector2Int[] BuildRoute(

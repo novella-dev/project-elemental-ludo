@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using ElementalLudo.Gameplay;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -219,18 +220,36 @@ namespace ElementalLudo.Board
 
         private void DrawRaisedSafeCells()
         {
-            DrawMarker(new Vector2(0f, 9f), SafeCell);
-            DrawMarker(new Vector2(-1f, 5f), Lighten(Red));
-            DrawMarker(new Vector2(1f, 5f), SafeCell);
-            DrawMarker(new Vector2(-5f, 1f), SafeCell);
-            DrawMarker(new Vector2(5f, 1f), Lighten(Blue));
-            DrawMarker(new Vector2(-9f, 0f), SafeCell);
-            DrawMarker(new Vector2(9f, 0f), SafeCell);
-            DrawMarker(new Vector2(-5f, -1f), Lighten(Green));
-            DrawMarker(new Vector2(5f, -1f), SafeCell);
-            DrawMarker(new Vector2(-1f, -5f), SafeCell);
-            DrawMarker(new Vector2(1f, -5f), Lighten(Yellow));
-            DrawMarker(new Vector2(0f, -9f), SafeCell);
+            foreach (Vector2Int cell in LudoBoardRoutes.GetSafeCells())
+            {
+                DrawMarker(cell, GetSafeCellColor(cell));
+            }
+        }
+
+        private Color GetSafeCellColor(Vector2Int cell)
+        {
+            Vector2Int start;
+            if (LudoBoardRoutes.TryGetRouteStartCell("red", out start) && cell == start)
+            {
+                return Lighten(Red);
+            }
+
+            if (LudoBoardRoutes.TryGetRouteStartCell("blue", out start) && cell == start)
+            {
+                return Lighten(Blue);
+            }
+
+            if (LudoBoardRoutes.TryGetRouteStartCell("yellow", out start) && cell == start)
+            {
+                return Lighten(Yellow);
+            }
+
+            if (LudoBoardRoutes.TryGetRouteStartCell("green", out start) && cell == start)
+            {
+                return Lighten(Green);
+            }
+
+            return SafeCell;
         }
 
         private void DrawMarker(Vector2 center, Color color)

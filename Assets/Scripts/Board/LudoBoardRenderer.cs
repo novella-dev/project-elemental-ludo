@@ -23,9 +23,9 @@ namespace ElementalLudo.Board
         private static readonly Color Yellow = new Color32(242, 211, 62, 255);
         private static readonly Color SafeCell = new Color32(118, 125, 125, 92);
 
-        private readonly List<Vector3> vertices = new List<Vector3>(2048);
-        private readonly List<Color> colors = new List<Color>(2048);
-        private readonly List<int> triangles = new List<int>(3072);
+        private readonly List<Vector3> vertices = new List<Vector3>(8192);
+        private readonly List<Color> colors = new List<Color>(8192);
+        private readonly List<int> triangles = new List<int>(12288);
 
         private readonly List<GameObject> cellLabels = new List<GameObject>(CellLabelCount);
 
@@ -192,6 +192,62 @@ namespace ElementalLudo.Board
             }
         }
 
+        private void DrawSandSurface(
+            float xMin, float yMin, float xMax, float yMax, float depth)
+        {
+            const int subdivisions = 28;
+            float stepX = (xMax - xMin) / subdivisions;
+            float stepY = (yMax - yMin) / subdivisions;
+
+            for (int iy = 0; iy < subdivisions; iy++)
+            {
+                float cy = yMin + iy * stepY;
+                float ny = cy + stepY;
+
+                for (int ix = 0; ix < subdivisions; ix++)
+                {
+                    float cx = xMin + ix * stepX;
+                    float nx = cx + stepX;
+
+                    int firstVertex = vertices.Count;
+                    vertices.Add(ToVector3(new Vector2(cx, cy), depth));
+                    vertices.Add(ToVector3(new Vector2(nx, cy), depth));
+                    vertices.Add(ToVector3(new Vector2(nx, ny), depth));
+                    vertices.Add(ToVector3(new Vector2(cx, ny), depth));
+                    colors.Add(SandColor(cx, cy));
+                    colors.Add(SandColor(nx, cy));
+                    colors.Add(SandColor(nx, ny));
+                    colors.Add(SandColor(cx, ny));
+
+                    triangles.Add(firstVertex);
+                    triangles.Add(firstVertex + 2);
+                    triangles.Add(firstVertex + 1);
+                    triangles.Add(firstVertex);
+                    triangles.Add(firstVertex + 3);
+                    triangles.Add(firstVertex + 2);
+                }
+            }
+        }
+
+        private static Color SandColor(float x, float y)
+        {
+            const float noiseScale = 3.5f;
+            float n0 = Mathf.PerlinNoise(x * noiseScale, y * noiseScale);
+            float n1 = Mathf.PerlinNoise(x * noiseScale * 2f + 5.3f,
+                                        y * noiseScale * 2f + 7.1f);
+            float n2 = Mathf.PerlinNoise(x * noiseScale * 4f + 13.7f,
+                                        y * noiseScale * 4f + 11.3f);
+            float noise = n0 * 0.5f + n1 * 0.3f + n2 * 0.2f;
+
+            Color sandBase = new Color(0.85f, 0.76f, 0.58f);
+            float variation = (noise - 0.5f) * 0.06f;
+            return new Color(
+                Mathf.Clamp01(sandBase.r + variation),
+                Mathf.Clamp01(sandBase.g + variation),
+                Mathf.Clamp01(sandBase.b + variation),
+                1f);
+        }
+
         private void DrawBoard()
         {
             const float outerEdge = 9.5f;
@@ -199,7 +255,7 @@ namespace ElementalLudo.Board
             const float lineWidth = 0.025f;
 
             AddRect(-9.68f, -9.68f, 9.68f, 9.68f, GridColor, 0.08f);
-            AddRect(-outerEdge, -outerEdge, outerEdge, outerEdge, BoardWhite, 0.06f);
+            DrawSandSurface(-outerEdge, -outerEdge, outerEdge, outerEdge, 0.06f);
 
             // Finishing lanes.
             AddRect(-0.5f, centerEdge, 0.5f, 8.5f, Red, 0.02f);
@@ -338,18 +394,36 @@ namespace ElementalLudo.Board
 
         private void DrawSafeCells()
         {
-            DrawMarker(new Vector2(0f, 9f), SafeCell);
-            DrawMarker(new Vector2(-1f, 5f), Lighten(Red));
-            DrawMarker(new Vector2(1f, 5f), SafeCell);
-            DrawMarker(new Vector2(-5f, 1f), SafeCell);
-            DrawMarker(new Vector2(5f, 1f), Lighten(Blue));
-            DrawMarker(new Vector2(-9f, 0f), SafeCell);
-            DrawMarker(new Vector2(9f, 0f), SafeCell);
-            DrawMarker(new Vector2(-5f, -1f), Lighten(Green));
-            DrawMarker(new Vector2(5f, -1f), SafeCell);
-            DrawMarker(new Vector2(-1f, -5f), SafeCell);
-            DrawMarker(new Vector2(1f, -5f), Lighten(Yellow));
-            DrawMarker(new Vector2(0f, -9f), SafeCell);
+            foreach (Vector2Int cell in LudoBoardRoutes.GetSafeCells())
+            {
+                DrawMarker(cell, GetSafeCellColor(cell));
+            }
+        }
+
+        private Color GetSafeCellColor(Vector2Int cell)
+        {
+            Vector2Int start;
+            if (LudoBoardRoutes.TryGetRouteStartCell("red", out start) && cell == start)
+            {
+                return Lighten(Red);
+            }
+
+            if (LudoBoardRoutes.TryGetRouteStartCell("blue", out start) && cell == start)
+            {
+                return Lighten(Blue);
+            }
+
+            if (LudoBoardRoutes.TryGetRouteStartCell("yellow", out start) && cell == start)
+            {
+                return Lighten(Yellow);
+            }
+
+            if (LudoBoardRoutes.TryGetRouteStartCell("green", out start) && cell == start)
+            {
+                return Lighten(Green);
+            }
+
+            return SafeCell;
         }
 
         private void DrawMarker(Vector2 center, Color color)
