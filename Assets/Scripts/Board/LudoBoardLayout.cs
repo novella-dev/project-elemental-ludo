@@ -44,5 +44,23 @@ namespace ElementalLudo.Board
                 (magnitude - CenterHalfExtent) * RouteCellLength;
             return Mathf.Sign(logicalCoordinate) * stretchedMagnitude;
         }
+
+        /// <summary>
+        /// Inverse of <see cref="ToWorldCoordinate"/>, for turning a point
+        /// picked on the board back into board coordinates.
+        /// </summary>
+        public static float ToLogicalCoordinate(float worldCoordinate)
+        {
+            float magnitude = Mathf.Abs(worldCoordinate);
+            float centerWorldExtent = CenterHalfExtent * CrossRouteCellLength;
+            if (magnitude <= centerWorldExtent)
+            {
+                return worldCoordinate / CrossRouteCellLength;
+            }
+
+            float logicalMagnitude = CenterHalfExtent +
+                (magnitude - centerWorldExtent) / RouteCellLength;
+            return Mathf.Sign(worldCoordinate) * logicalMagnitude;
+        }
     }
 }

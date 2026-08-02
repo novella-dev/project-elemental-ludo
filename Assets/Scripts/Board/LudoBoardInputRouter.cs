@@ -18,10 +18,13 @@ namespace ElementalLudo.Board
     {
         [SerializeField] private Camera inputCamera;
         [SerializeField] private float raycastMaxDistance = 1000f;
+        [Tooltip("Depth of the plane used to pick bare board squares. Matches the top of the raised track tiles.")]
+        [SerializeField] private float boardPlaneDepth = -0.05f;
 
         public event Action RollKeyPressed;
         public event Action<Dice> DiceClicked;
         public event Action<Token> TokenClicked;
+        public event Action<Vector2Int> CellClicked;
 
         private void Awake()
         {
@@ -54,23 +57,53 @@ namespace ElementalLudo.Board
             }
 
             Ray ray = inputCamera.ScreenPointToRay(screenPosition);
-            if (!Physics.Raycast(ray, out RaycastHit hit, raycastMaxDistance))
+            if (Physics.Raycast(ray, out RaycastHit hit, raycastMaxDistance))
             {
-                return;
+                Dice clickedDice = hit.collider.GetComponentInParent<Dice>();
+                if (clickedDice != null)
+                {
+                    DiceClicked?.Invoke(clickedDice);
+                    return;
+                }
+
+                Token clickedToken = hit.collider.GetComponentInParent<Token>();
+                if (clickedToken != null)
+                {
+                    TokenClicked?.Invoke(clickedToken);
+                    return;
+                }
             }
 
-            Dice clickedDice = hit.collider.GetComponentInParent<Dice>();
-            if (clickedDice != null)
+            // Only the die and the tokens carry colliders, so a bare board
+            // square is picked by crossing the ray with the board plane rather
+            // than by hitting geometry.
+            if (TryGetBoardCell(ray, out Vector2Int cell))
             {
-                DiceClicked?.Invoke(clickedDice);
-                return;
+                CellClicked?.Invoke(cell);
+            }
+        }
+
+        private bool TryGetBoardCell(Ray ray, out Vector2Int cell)
+        {
+            cell = default;
+
+            float denominator = ray.direction.z;
+            if (Mathf.Abs(denominator) < 0.000001f)
+            {
+                return false;
             }
 
-            Token clickedToken = hit.collider.GetComponentInParent<Token>();
-            if (clickedToken != null)
+            float distance = (boardPlaneDepth - ray.origin.z) / denominator;
+            if (distance < 0f)
             {
-                TokenClicked?.Invoke(clickedToken);
+                return false;
             }
+
+            Vector3 point = ray.origin + ray.direction * distance;
+            cell = new Vector2Int(
+                Mathf.RoundToInt(LudoBoardLayout.ToLogicalCoordinate(point.x)),
+                Mathf.RoundToInt(LudoBoardLayout.ToLogicalCoordinate(point.y)));
+            return true;
         }
     }
 }
