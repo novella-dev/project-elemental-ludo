@@ -9,14 +9,21 @@ namespace ElementalLudo.DiceSystem
     [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
     public sealed class DiceVisual : MonoBehaviour
     {
+        public const float HalfSize = 0.45f;
+
         private const int FaceResolution = 6;
         private const int PipSegments = 24;
-        private const float HalfSize = 0.45f;
         private const float CornerRadius = 0.1f;
         private const float PipRadius = 0.065f;
         private const float PipSpacing = 0.18f;
 
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+
+        [Min(0f)]
+        [Tooltip("Gap between the board surface and the die's underside when resting. " +
+                 "The die is positioned from this, so editing the Transform directly " +
+                 "will not stick — change this instead.")]
+        [SerializeField] private float restHeight = 0.3f;
 
         private readonly List<Vector3> vertices = new List<Vector3>(1200);
         private readonly List<Vector3> normals = new List<Vector3>(1200);
@@ -24,8 +31,6 @@ namespace ElementalLudo.DiceSystem
         private readonly List<int> pipTriangles = new List<int>(1800);
 
         private MaterialPropertyBlock propertyBlock;
-        private Vector3 restLocalPosition;
-        private bool restCaptured;
         private Color baseBodyColor = new Color(0.93f, 0.92f, 0.88f, 1f);
         private bool baseBodyColorCached;
 
@@ -92,14 +97,22 @@ namespace ElementalLudo.DiceSystem
         }
 
         /// <summary>
+        /// Where the die sits when not mid-roll. Derived from
+        /// <see cref="restHeight"/> rather than read from the Transform:
+        /// this component rewrites its own position, so a hand-edited
+        /// Transform value would just be overwritten.
+        /// </summary>
+        public Vector3 RestLocalPosition =>
+            new Vector3(0f, 0f, -(restHeight + HalfSize));
+
+        /// <summary>
         /// Settles the die: the requested face turns to camera and any roll
         /// hop is cleared.
         /// </summary>
         public void ShowValue(int value)
         {
-            EnsureRestCaptured();
             transform.localRotation = RotationForValue(value);
-            transform.localPosition = restLocalPosition;
+            transform.localPosition = RestLocalPosition;
         }
 
         /// <summary>
@@ -109,12 +122,9 @@ namespace ElementalLudo.DiceSystem
         /// </summary>
         public void ShowRoll(Quaternion rotation, float hopHeight)
         {
-            EnsureRestCaptured();
+            Vector3 rest = RestLocalPosition;
             transform.localRotation = rotation;
-            transform.localPosition = new Vector3(
-                restLocalPosition.x,
-                restLocalPosition.y,
-                restLocalPosition.z - hopHeight);
+            transform.localPosition = new Vector3(rest.x, rest.y, rest.z - hopHeight);
         }
 
         /// <summary>
@@ -165,17 +175,6 @@ namespace ElementalLudo.DiceSystem
                 BaseColorId,
                 Color.Lerp(baseBodyColor, accent, Mathf.Clamp01(strength)));
             meshRenderer.SetPropertyBlock(propertyBlock, 0);
-        }
-
-        private void EnsureRestCaptured()
-        {
-            if (restCaptured)
-            {
-                return;
-            }
-
-            restLocalPosition = transform.localPosition;
-            restCaptured = true;
         }
 
         private void AddRoundedFace(Vector3 faceNormal, Vector3 horizontal, Vector3 vertical)

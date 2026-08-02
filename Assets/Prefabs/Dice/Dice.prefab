@@ -104,6 +104,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1e58df4819f045139ba7cdbe9c8cf8f6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ElementalLudo.DiceSystem.DiceVisual
+  restHeight: 0.3
 --- !u!1 &3840754529593871221
 GameObject:
   m_ObjectHideFlags: 0

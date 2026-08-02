@@ -37,6 +37,16 @@ namespace ElementalLudo.DiceSystem
         public bool IsRolling => rollRoutine != null;
         public event Action<int> Rolled;
 
+        private void Awake()
+        {
+            // Editor-time writes to the collider would fight the prefab's
+            // serialized value, so only reconcile it in play mode.
+            if (Application.isPlaying)
+            {
+                SyncClickTarget();
+            }
+        }
+
         private void OnEnable()
         {
             RefreshVisual();
@@ -179,6 +189,23 @@ namespace ElementalLudo.DiceSystem
             {
                 visual.ShowValue(value);
             }
+        }
+
+        /// <summary>
+        /// Parks the click target on top of the die. The collider lives on
+        /// this root while the mesh lives on the child, so the two silently
+        /// drift apart whenever the die's rest height is tuned.
+        /// </summary>
+        private void SyncClickTarget()
+        {
+            BoxCollider box = GetComponent<BoxCollider>();
+            if (box == null || !EnsureVisual())
+            {
+                return;
+            }
+
+            box.center = visual.RestLocalPosition;
+            box.size = Vector3.one * (DiceVisual.HalfSize * 2f);
         }
 
         private bool EnsureVisual()
