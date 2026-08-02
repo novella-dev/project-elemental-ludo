@@ -8,8 +8,8 @@ namespace ElementalLudo.Board
     public sealed class LudoReachableCellsHighlighter : MonoBehaviour
     {
         [SerializeField]
-        [Tooltip("Depth offset applied to the highlight mesh. Use a value slightly in front of the board surface.")]
-        private float zOffset = -0.045f;
+        [Tooltip("Depth of the highlight. Must sit in front of the raised track tiles (-0.05) or the tiles cover it and only the grid gap shows through.")]
+        private float zOffset = -0.08f;
 
         private Mesh highlightMesh;
         private Material highlightMaterial;
@@ -64,10 +64,14 @@ namespace ElementalLudo.Board
 
         private void AddCell(Vector2Int cell, Color color)
         {
-            float xMin = LudoBoardLayout.ToWorldCoordinate(cell.x - 0.5f);
-            float xMax = LudoBoardLayout.ToWorldCoordinate(cell.x + 0.5f);
-            float yMin = LudoBoardLayout.ToWorldCoordinate(cell.y - 0.5f);
-            float yMax = LudoBoardLayout.ToWorldCoordinate(cell.y + 0.5f);
+            // Match the raised tile rather than the full 1x1 cell, so the
+            // highlight lands exactly on the tile top instead of spilling into
+            // the grid gaps around it.
+            const float half = LudoBoardLayout.TrackCellHalfExtent;
+            float xMin = LudoBoardLayout.ToWorldCoordinate(cell.x - half);
+            float xMax = LudoBoardLayout.ToWorldCoordinate(cell.x + half);
+            float yMin = LudoBoardLayout.ToWorldCoordinate(cell.y - half);
+            float yMax = LudoBoardLayout.ToWorldCoordinate(cell.y + half);
 
             Vector3 bottomLeft = new Vector3(xMin, yMin, zOffset);
             Vector3 bottomRight = new Vector3(xMax, yMin, zOffset);

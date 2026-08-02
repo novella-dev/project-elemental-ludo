@@ -5,6 +5,14 @@ namespace ElementalLudo.Board
     public static class LudoBoardLayout
     {
         public const float CenterHalfExtent = 1.5f;
+
+        /// <summary>
+        /// Half-width of a raised track tile, in logical units. Slightly less
+        /// than the 0.5 half-cell, and that difference is exactly the grid gap
+        /// left between neighbouring tiles.
+        /// </summary>
+        public const float TrackCellHalfExtent = 0.455f;
+
         public const float CrossRouteCellLength = 2f;
         public const float RouteCellLength = 1f;
         public const float HomeLogicalCenter = 5.5f;

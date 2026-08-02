@@ -665,8 +665,8 @@ namespace ElementalLudo.Gameplay
             Color highlightColor = Color.Lerp(
                 ActivePlayer.TokenColor,
                 Color.white,
-                0.25f);
-            highlightColor.a = 0.5f;
+                0.35f);
+            highlightColor.a = 0.8f;
             reachableCellsHighlighter.SetCells(reachableCells, highlightColor);
         }
 

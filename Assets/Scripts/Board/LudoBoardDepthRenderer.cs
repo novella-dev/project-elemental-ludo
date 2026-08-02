@@ -145,10 +145,10 @@ namespace ElementalLudo.Board
 
                     Color topColor = TrackColor(x, y);
                     AddBox(
-                        x - 0.455f,
-                        y - 0.455f,
-                        x + 0.455f,
-                        y + 0.455f,
+                        x - LudoBoardLayout.TrackCellHalfExtent,
+                        y - LudoBoardLayout.TrackCellHalfExtent,
+                        x + LudoBoardLayout.TrackCellHalfExtent,
+                        y + LudoBoardLayout.TrackCellHalfExtent,
                         -0.05f,
                         0.025f,
                         topColor,
