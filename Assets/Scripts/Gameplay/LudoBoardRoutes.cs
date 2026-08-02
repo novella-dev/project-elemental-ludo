@@ -9,6 +9,24 @@ namespace ElementalLudo.Gameplay
         public const int SharedPathLength = 68;
         public const int PlayerMainPathLength = 64;
         public const int RouteLength = 70;
+        public const int MaxTokensPerCell = 2;
+
+        private static readonly HashSet<Vector2Int> SafeCells =
+            new HashSet<Vector2Int>
+            {
+                new Vector2Int(0, 9),
+                new Vector2Int(-1, 5),
+                new Vector2Int(1, 5),
+                new Vector2Int(-5, 1),
+                new Vector2Int(5, 1),
+                new Vector2Int(-9, 0),
+                new Vector2Int(9, 0),
+                new Vector2Int(-5, -1),
+                new Vector2Int(5, -1),
+                new Vector2Int(-1, -5),
+                new Vector2Int(1, -5),
+                new Vector2Int(0, -9)
+            };
 
         private static readonly Vector2Int[] MainPath =
         {
@@ -141,6 +159,11 @@ namespace ElementalLudo.Gameplay
             }
 
             return Routes.TryGetValue(playerId, out route);
+        }
+
+        public static bool IsSafeCell(Vector2Int cell)
+        {
+            return SafeCells.Contains(cell);
         }
 
         private static Vector2Int[] BuildRoute(

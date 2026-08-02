@@ -9,37 +9,6 @@ using UnityEngine.InputSystem;
 
 namespace ElementalLudo.Gameplay
 {
-    public enum LudoTurnPhase
-    {
-        AwaitingRoll,
-        AwaitingAction,
-        Resolving,
-        GameOver
-    }
-
-    public enum LudoActionType
-    {
-        LeaveHome,
-        Move
-    }
-
-    public readonly struct LudoLegalAction
-    {
-        public Token Token { get; }
-        public LudoActionType Type { get; }
-        public int DestinationRouteIndex { get; }
-
-        public LudoLegalAction(
-            Token token,
-            LudoActionType type,
-            int destinationRouteIndex)
-        {
-            Token = token;
-            Type = type;
-            DestinationRouteIndex = destinationRouteIndex;
-        }
-    }
-
     [DisallowMultipleComponent]
     public sealed class LudoGameController : MonoBehaviour
     {
@@ -50,23 +19,6 @@ namespace ElementalLudo.Gameplay
             "yellow",
             "green"
         };
-
-        private sealed class PlayerRuntime
-        {
-            public PlayerStyle Style { get; }
-            public List<Token> Tokens { get; }
-            public Vector2Int[] Route { get; }
-
-            public PlayerRuntime(
-                PlayerStyle style,
-                List<Token> tokens,
-                Vector2Int[] route)
-            {
-                Style = style;
-                Tokens = tokens;
-                Route = route;
-            }
-        }
 
         [Header("Scene References")]
         [SerializeField] private Dice dice;
@@ -84,7 +36,7 @@ namespace ElementalLudo.Gameplay
         [Header("Testing UI")]
         [SerializeField] private bool showRuntimePanel = true;
 
-        private readonly List<PlayerRuntime> players = new List<PlayerRuntime>(4);
+        private readonly List<LudoPlayerState> players = new List<LudoPlayerState>(4);
         private readonly List<LudoLegalAction> legalActions =
             new List<LudoLegalAction>(4);
         private readonly Dictionary<Token, Vector3> homePositions =
@@ -180,7 +132,7 @@ namespace ElementalLudo.Gameplay
             }
 
             StopAllCoroutines();
-            foreach (PlayerRuntime player in players)
+            foreach (LudoPlayerState player in players)
             {
                 foreach (Token token in player.Tokens)
                 {
@@ -299,7 +251,7 @@ namespace ElementalLudo.Gameplay
                     return false;
                 }
 
-                players.Add(new PlayerRuntime(style, playerTokens, route));
+                players.Add(new LudoPlayerState(style, playerTokens, route));
             }
 
             return players.Count == 4;
@@ -340,40 +292,12 @@ namespace ElementalLudo.Gameplay
 
         private void CalculateLegalActions()
         {
-            legalActions.Clear();
-            PlayerRuntime player = players[activePlayerIndex];
-            foreach (Token token in player.Tokens)
-            {
-                if (LudoMovementRules.CanLeaveHome(token.State, rolledValue))
-                {
-                    Vector2Int startCell = player.Route[0];
-                    if (!IsCellBlockedByOpponent(startCell, player))
-                    {
-                        legalActions.Add(new LudoLegalAction(
-                            token,
-                            LudoActionType.LeaveHome,
-                            0));
-                    }
-
-                    continue;
-                }
-
-                if (LudoMovementRules.TryGetDestination(
-                        token.State,
-                        token.RouteIndex,
-                        rolledValue,
-                        player.Route.Length,
-                        out int destination))
-                {
-                    if (!IsPathBlocked(player, token.RouteIndex + 1, destination))
-                    {
-                        legalActions.Add(new LudoLegalAction(
-                            token,
-                            LudoActionType.Move,
-                            destination));
-                    }
-                }
-            }
+            LudoPlayerState player = players[activePlayerIndex];
+            LudoRulesEngine.CalculateLegalActions(
+                player,
+                players,
+                rolledValue,
+                legalActions);
         }
 
         private bool TryExecuteAction(LudoLegalAction requestedAction)
@@ -422,7 +346,7 @@ namespace ElementalLudo.Gameplay
 
         private IEnumerator ExecuteAction(LudoLegalAction action)
         {
-            PlayerRuntime player = players[activePlayerIndex];
+            LudoPlayerState player = players[activePlayerIndex];
             Token token = action.Token;
 
             if (action.Type == LudoActionType.LeaveHome)
@@ -532,7 +456,7 @@ namespace ElementalLudo.Gameplay
             RequestRoll();
         }
 
-        private void EndGame(PlayerRuntime winningPlayer)
+        private void EndGame(LudoPlayerState winningPlayer)
         {
             winner = winningPlayer.Style;
             legalActions.Clear();
@@ -546,7 +470,7 @@ namespace ElementalLudo.Gameplay
         }
 
         private Vector3 GetRoutePosition(
-            PlayerRuntime player,
+            LudoPlayerState player,
             Token token,
             int routeIndex)
         {
@@ -573,7 +497,7 @@ namespace ElementalLudo.Gameplay
         }
 
         private Vector3 GetSameColorCellOffset(
-            PlayerRuntime player,
+            LudoPlayerState player,
             Token token,
             int routeIndex,
             Vector2Int cell)
@@ -616,7 +540,7 @@ namespace ElementalLudo.Gameplay
                 return new Vector2Int(int.MinValue, int.MinValue);
             }
 
-            foreach (PlayerRuntime player in players)
+            foreach (LudoPlayerState player in players)
             {
                 if (player.Style == token.OwnerStyle)
                 {
@@ -627,44 +551,24 @@ namespace ElementalLudo.Gameplay
             return new Vector2Int(int.MinValue, int.MinValue);
         }
 
-        private void CaptureOpponentTokensOnCell(PlayerRuntime movingPlayer, Token movingToken)
+        private void CaptureOpponentTokensOnCell(LudoPlayerState movingPlayer, Token movingToken)
         {
-            Vector2Int movingCell = movingPlayer.Route[movingToken.RouteIndex];
+            List<Token> captured = LudoRulesEngine.GetCapturedTokens(
+                movingPlayer,
+                players,
+                movingToken);
 
-            foreach (PlayerRuntime player in players)
+            foreach (Token token in captured)
             {
-                if (player == movingPlayer)
-                {
-                    continue;
-                }
-
-                List<Token> captured = new List<Token>();
-                foreach (Token token in player.Tokens)
-                {
-                    if (token.State != TokenState.Track)
-                    {
-                        continue;
-                    }
-
-                    Vector2Int tokenCell = player.Route[token.RouteIndex];
-                    if (tokenCell == movingCell)
-                    {
-                        captured.Add(token);
-                    }
-                }
-
-                foreach (Token token in captured)
-                {
-                    token.SendHome();
-                    token.transform.position = homePositions[token];
-                    token.SetInteractionState(TokenInteractionState.Normal);
-                    statusMessage =
-                        $"{movingToken.name} captured {token.name}!";
-                }
+                token.SendHome();
+                token.transform.position = homePositions[token];
+                token.SetInteractionState(TokenInteractionState.Normal);
+                statusMessage =
+                    $"{movingToken.name} captured {token.name}!";
             }
         }
 
-        private void RepositionSameColorTokens(PlayerRuntime player)
+        private void RepositionSameColorTokens(LudoPlayerState player)
         {
             foreach (Token token in player.Tokens)
             {
@@ -675,60 +579,6 @@ namespace ElementalLudo.Gameplay
                     token.transform.position = newPosition;
                 }
             }
-        }
-
-        private static int CountSameColorTokensOnCell(
-            PlayerRuntime player,
-            Vector2Int cell)
-        {
-            int count = 0;
-            foreach (Token token in player.Tokens)
-            {
-                if (token.State == TokenState.Track &&
-                    player.Route[token.RouteIndex] == cell)
-                {
-                    count++;
-                }
-            }
-
-            return count;
-        }
-
-        private bool IsCellBlockedByOpponent(
-            Vector2Int cell,
-            PlayerRuntime movingPlayer)
-        {
-            foreach (PlayerRuntime player in players)
-            {
-                if (player == movingPlayer)
-                {
-                    continue;
-                }
-
-                if (CountSameColorTokensOnCell(player, cell) >= 2)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private bool IsPathBlocked(
-            PlayerRuntime player,
-            int startIndex,
-            int endIndex)
-        {
-            for (int i = startIndex; i <= endIndex; i++)
-            {
-                Vector2Int cell = player.Route[i];
-                if (IsCellBlockedByOpponent(cell, player))
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         private static Vector3 GetGoalOffset(string playerId, int tokenId)
@@ -756,7 +606,7 @@ namespace ElementalLudo.Gameplay
             bool showLegalActions,
             bool resetToNormal = false)
         {
-            foreach (PlayerRuntime player in players)
+            foreach (LudoPlayerState player in players)
             {
                 foreach (Token token in player.Tokens)
                 {
