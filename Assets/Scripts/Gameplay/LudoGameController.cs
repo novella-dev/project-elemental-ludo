@@ -21,7 +21,8 @@ namespace ElementalLudo.Gameplay
 
         [Header("Scene References")]
         [SerializeField] private Dice dice;
-        [SerializeField] private LudoBoardInputRouter inputRouter;
+        [Tooltip("Must implement IPlayerController (e.g. HumanPlayerController). Left empty, a HumanPlayerController is found or created automatically.")]
+        [SerializeField] private MonoBehaviour playerControllerSource;
         [SerializeField] private LudoReachableCellsHighlighter reachableCellsHighlighter;
 
         [Header("Turn Behaviour")]
@@ -39,6 +40,7 @@ namespace ElementalLudo.Gameplay
         private readonly Dictionary<Token, Vector3> homePositions =
             new Dictionary<Token, Vector3>(16);
 
+        private IPlayerController playerController;
         private int activePlayerIndex;
         private int rolledValue;
         private bool actionPerformed;
@@ -74,29 +76,39 @@ namespace ElementalLudo.Gameplay
                 dice = FindFirstObjectByType<Dice>();
             }
 
-            EnsureInputRouter();
+            EnsurePlayerController();
             EnsureReachableCellsHighlighter();
         }
 
-        private void EnsureInputRouter()
+        private void EnsurePlayerController()
         {
-            if (inputRouter != null)
+            if (playerControllerSource != null)
             {
-                return;
+                playerController = playerControllerSource as IPlayerController;
+                if (playerController != null)
+                {
+                    return;
+                }
+
+                Debug.LogError(
+                    $"{playerControllerSource.name} does not implement IPlayerController.",
+                    this);
             }
 
-            inputRouter = FindFirstObjectByType<LudoBoardInputRouter>();
-            if (inputRouter != null)
+            HumanPlayerController humanController =
+                FindFirstObjectByType<HumanPlayerController>();
+            if (humanController == null)
             {
-                return;
+                GameObject controllerObject = new GameObject("HumanPlayerController")
+                {
+                    hideFlags = HideFlags.DontSave
+                };
+                controllerObject.transform.SetParent(transform, false);
+                humanController = controllerObject.AddComponent<HumanPlayerController>();
             }
 
-            GameObject inputRouterObject = new GameObject("BoardInputRouter")
-            {
-                hideFlags = HideFlags.DontSave
-            };
-            inputRouterObject.transform.SetParent(transform, false);
-            inputRouter = inputRouterObject.AddComponent<LudoBoardInputRouter>();
+            playerControllerSource = humanController;
+            playerController = humanController;
         }
 
         private void EnsureReachableCellsHighlighter()
@@ -127,11 +139,10 @@ namespace ElementalLudo.Gameplay
                 dice.Rolled += HandleDiceRolled;
             }
 
-            if (inputRouter != null)
+            if (playerController != null)
             {
-                inputRouter.RollKeyPressed += HandleRollKeyPressed;
-                inputRouter.DiceClicked += HandleDiceClicked;
-                inputRouter.TokenClicked += HandleTokenClicked;
+                playerController.RollRequested += HandleRollRequested;
+                playerController.TokenSelected += HandleTokenSelected;
             }
         }
 
@@ -159,15 +170,14 @@ namespace ElementalLudo.Gameplay
                 dice.Rolled -= HandleDiceRolled;
             }
 
-            if (inputRouter != null)
+            if (playerController != null)
             {
-                inputRouter.RollKeyPressed -= HandleRollKeyPressed;
-                inputRouter.DiceClicked -= HandleDiceClicked;
-                inputRouter.TokenClicked -= HandleTokenClicked;
+                playerController.RollRequested -= HandleRollRequested;
+                playerController.TokenSelected -= HandleTokenSelected;
             }
         }
 
-        private void HandleRollKeyPressed()
+        private void HandleRollRequested()
         {
             if (phase == LudoTurnPhase.AwaitingRoll)
             {
@@ -175,15 +185,7 @@ namespace ElementalLudo.Gameplay
             }
         }
 
-        private void HandleDiceClicked(Dice clickedDice)
-        {
-            if (phase == LudoTurnPhase.AwaitingRoll && clickedDice == dice)
-            {
-                RequestRoll();
-            }
-        }
-
-        private void HandleTokenClicked(Token token)
+        private void HandleTokenSelected(Token token)
         {
             if (phase == LudoTurnPhase.AwaitingAction)
             {

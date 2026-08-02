@@ -46,7 +46,7 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::ElementalLudo.Gameplay.LudoGameController
   dice: {fileID: 0}
-  inputRouter: {fileID: 0}
+  playerControllerSource: {fileID: 0}
   reachableCellsHighlighter: {fileID: 0}
   autoExecuteSingleAction: 1
   noMoveMessageDuration: 1.1
