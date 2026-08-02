@@ -13,24 +13,30 @@ namespace ElementalLudo.Gameplay
             return state == TokenState.Home && rolledValue == HomeExitRoll;
         }
 
+        /// <summary>
+        /// <paramref name="moveDistance"/> is normally a 1-6 dice roll, but
+        /// callers may pass up to 7 to account for the Lightning element's
+        /// +1 effective distance (Fase 1) — this function just validates a
+        /// distance and applies it, it doesn't know why it's 7.
+        /// </summary>
         public static bool TryGetDestination(
             TokenState state,
             int currentRouteIndex,
-            int rolledValue,
+            int moveDistance,
             int routeLength,
             out int destinationRouteIndex)
         {
             destinationRouteIndex = -1;
             if (state != TokenState.Track ||
                 currentRouteIndex < 0 ||
-                rolledValue < 1 ||
-                rolledValue > 6 ||
+                moveDistance < 1 ||
+                moveDistance > 7 ||
                 routeLength <= 0)
             {
                 return false;
             }
 
-            int candidate = currentRouteIndex + rolledValue;
+            int candidate = currentRouteIndex + moveDistance;
             if (candidate >= routeLength)
             {
                 return false;

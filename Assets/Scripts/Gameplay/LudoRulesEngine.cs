@@ -6,11 +6,12 @@ namespace ElementalLudo.Gameplay
 {
     /// <summary>
     /// Pure Parchís/Ludo rules. Every method here is a function of its
-    /// inputs (including the BoardState it's handed): no scene state, no
-    /// side effects, nothing mutated except the caller-supplied output
-    /// collections. This is what lets the rules be unit-tested, run inside
-    /// an AI's look-ahead against a cloned BoardState, or reused by a
-    /// future combat/roguelike layer without dragging Unity along.
+    /// inputs (including the BoardState and LudoRulesContext it's handed):
+    /// no scene state, no side effects, nothing mutated except the
+    /// caller-supplied output collections. This is what lets the rules be
+    /// unit-tested, run inside an AI's look-ahead against a cloned
+    /// BoardState, or reused by a future combat/roguelike layer without
+    /// dragging Unity along.
     /// </summary>
     public static class LudoRulesEngine
     {
@@ -19,17 +20,24 @@ namespace ElementalLudo.Gameplay
             LudoPlayerState activePlayer,
             IReadOnlyList<LudoPlayerState> allPlayers,
             int rolledValue,
+            LudoRulesContext context,
             List<LudoLegalAction> results)
         {
             results.Clear();
 
+            bool isLightning = context.ElementalModeEnabled &&
+                                activePlayer.Element == LudoElement.Lightning;
+
             foreach (Token token in activePlayer.Tokens)
             {
                 TokenState state = boardState.GetState(token);
+
+                // Leaving home always needs an exact roll of 5 — Lightning's
+                // +1 only applies to on-track moves, per design.
                 if (LudoMovementRules.CanLeaveHome(state, rolledValue))
                 {
                     Vector2Int startCell = activePlayer.Route[0];
-                    if (!IsBarrier(boardState, allPlayers, startCell) &&
+                    if (!IsBarrier(boardState, allPlayers, startCell, context, activePlayer.Element) &&
                         !IsCellFull(boardState, allPlayers, startCell))
                     {
                         results.Add(new LudoLegalAction(
@@ -42,10 +50,11 @@ namespace ElementalLudo.Gameplay
                 }
 
                 int routeIndex = boardState.GetRouteIndex(token);
+                int moveDistance = isLightning ? rolledValue + 1 : rolledValue;
                 if (LudoMovementRules.TryGetDestination(
                         state,
                         routeIndex,
-                        rolledValue,
+                        moveDistance,
                         activePlayer.Route.Length,
                         out int destination))
                 {
@@ -57,7 +66,9 @@ namespace ElementalLudo.Gameplay
                             allPlayers,
                             activePlayer.Route,
                             routeIndex + 1,
-                            destination) &&
+                            destination,
+                            context,
+                            activePlayer.Element) &&
                         (destinationIsCenter || !IsCellFull(boardState, allPlayers, destinationCell)))
                     {
                         results.Add(new LudoLegalAction(
@@ -69,11 +80,25 @@ namespace ElementalLudo.Gameplay
             }
         }
 
+        /// <summary>
+        /// Whether <paramref name="cell"/> is a barrier (2+ same-color
+        /// tokens) for <paramref name="movingElement"/>'s own movement.
+        /// Water ignores every barrier, of any color, on its own moves —
+        /// but a water-formed barrier still blocks everyone else normally,
+        /// since this only short-circuits when the *mover* is Water.
+        /// </summary>
         public static bool IsBarrier(
             BoardState boardState,
             IReadOnlyList<LudoPlayerState> allPlayers,
-            Vector2Int cell)
+            Vector2Int cell,
+            LudoRulesContext context,
+            LudoElement movingElement)
         {
+            if (context.ElementalModeEnabled && movingElement == LudoElement.Water)
+            {
+                return false;
+            }
+
             foreach (LudoPlayerState player in allPlayers)
             {
                 if (CountSameColorTokensOnCell(boardState, player, cell) >= 2)
@@ -141,11 +166,13 @@ namespace ElementalLudo.Gameplay
             IReadOnlyList<LudoPlayerState> allPlayers,
             Vector2Int[] route,
             int startIndex,
-            int endIndex)
+            int endIndex,
+            LudoRulesContext context,
+            LudoElement movingElement)
         {
             for (int i = startIndex; i <= endIndex; i++)
             {
-                if (IsBarrier(boardState, allPlayers, route[i]))
+                if (IsBarrier(boardState, allPlayers, route[i], context, movingElement))
                 {
                     return true;
                 }
@@ -160,24 +187,38 @@ namespace ElementalLudo.Gameplay
         /// home. That side effect stays with the caller, which is exactly
         /// the seam a future combat system hooks into ("before applying
         /// this capture, resolve a fight instead").
+        ///
+        /// Elemental Fire ignores safe cells when capturing. Elemental
+        /// Water never captures Plant tokens, regardless of cell.
         /// </summary>
         public static List<Token> GetCapturedTokens(
             BoardState boardState,
             LudoPlayerState movingPlayer,
             IReadOnlyList<LudoPlayerState> allPlayers,
-            Token movingToken)
+            Token movingToken,
+            LudoRulesContext context)
         {
             List<Token> captured = new List<Token>();
             Vector2Int movingCell = movingPlayer.Route[boardState.GetRouteIndex(movingToken)];
 
-            if (LudoBoardRoutes.IsSafeCell(movingCell))
+            bool ignoresSafeCells = context.ElementalModeEnabled &&
+                                     movingPlayer.Element == LudoElement.Fire;
+            if (!ignoresSafeCells && LudoBoardRoutes.IsSafeCell(movingCell))
             {
                 return captured;
             }
 
+            bool sparesPlant = context.ElementalModeEnabled &&
+                                movingPlayer.Element == LudoElement.Water;
+
             foreach (LudoPlayerState player in allPlayers)
             {
                 if (player == movingPlayer)
+                {
+                    continue;
+                }
+
+                if (sparesPlant && player.Element == LudoElement.Plant)
                 {
                     continue;
                 }
