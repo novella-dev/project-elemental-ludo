@@ -5,7 +5,6 @@ using ElementalLudo.Board;
 using ElementalLudo.DiceSystem;
 using ElementalLudo.Tokens;
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 namespace ElementalLudo.Gameplay
 {
@@ -22,7 +21,7 @@ namespace ElementalLudo.Gameplay
 
         [Header("Scene References")]
         [SerializeField] private Dice dice;
-        [SerializeField] private Camera inputCamera;
+        [SerializeField] private LudoBoardInputRouter inputRouter;
         [SerializeField] private LudoReachableCellsHighlighter reachableCellsHighlighter;
 
         [Header("Turn Behaviour")]
@@ -71,12 +70,29 @@ namespace ElementalLudo.Gameplay
                 dice = FindFirstObjectByType<Dice>();
             }
 
-            if (inputCamera == null)
+            EnsureInputRouter();
+            EnsureReachableCellsHighlighter();
+        }
+
+        private void EnsureInputRouter()
+        {
+            if (inputRouter != null)
             {
-                inputCamera = Camera.main;
+                return;
             }
 
-            EnsureReachableCellsHighlighter();
+            inputRouter = FindFirstObjectByType<LudoBoardInputRouter>();
+            if (inputRouter != null)
+            {
+                return;
+            }
+
+            GameObject inputRouterObject = new GameObject("BoardInputRouter")
+            {
+                hideFlags = HideFlags.DontSave
+            };
+            inputRouterObject.transform.SetParent(transform, false);
+            inputRouter = inputRouterObject.AddComponent<LudoBoardInputRouter>();
         }
 
         private void EnsureReachableCellsHighlighter()
@@ -106,6 +122,13 @@ namespace ElementalLudo.Gameplay
             {
                 dice.Rolled += HandleDiceRolled;
             }
+
+            if (inputRouter != null)
+            {
+                inputRouter.RollKeyPressed += HandleRollKeyPressed;
+                inputRouter.DiceClicked += HandleDiceClicked;
+                inputRouter.TokenClicked += HandleTokenClicked;
+            }
         }
 
         private void Start()
@@ -131,22 +154,36 @@ namespace ElementalLudo.Gameplay
             {
                 dice.Rolled -= HandleDiceRolled;
             }
+
+            if (inputRouter != null)
+            {
+                inputRouter.RollKeyPressed -= HandleRollKeyPressed;
+                inputRouter.DiceClicked -= HandleDiceClicked;
+                inputRouter.TokenClicked -= HandleTokenClicked;
+            }
         }
 
-        private void Update()
+        private void HandleRollKeyPressed()
         {
-            Keyboard keyboard = Keyboard.current;
-            if (keyboard != null &&
-                keyboard.spaceKey.wasPressedThisFrame &&
-                phase == LudoTurnPhase.AwaitingRoll)
+            if (phase == LudoTurnPhase.AwaitingRoll)
             {
                 RequestRoll();
             }
+        }
 
-            Mouse mouse = Mouse.current;
-            if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+        private void HandleDiceClicked(Dice clickedDice)
+        {
+            if (phase == LudoTurnPhase.AwaitingRoll && clickedDice == dice)
             {
-                HandleBoardClick(mouse.position.ReadValue());
+                RequestRoll();
+            }
+        }
+
+        private void HandleTokenClicked(Token token)
+        {
+            if (phase == LudoTurnPhase.AwaitingAction)
+            {
+                TrySelectToken(token);
             }
         }
 
@@ -764,33 +801,6 @@ namespace ElementalLudo.Gameplay
 
                     token.SetInteractionState(state);
                 }
-            }
-        }
-
-        private void HandleBoardClick(Vector2 screenPosition)
-        {
-            if (!initialized || inputCamera == null)
-            {
-                return;
-            }
-
-            Ray ray = inputCamera.ScreenPointToRay(screenPosition);
-            if (!Physics.Raycast(ray, out RaycastHit hit, 1000f))
-            {
-                return;
-            }
-
-            if (phase == LudoTurnPhase.AwaitingRoll &&
-                hit.collider.GetComponentInParent<Dice>() == dice)
-            {
-                RequestRoll();
-                return;
-            }
-
-            if (phase == LudoTurnPhase.AwaitingAction)
-            {
-                Token token = hit.collider.GetComponentInParent<Token>();
-                TrySelectToken(token);
             }
         }
 
