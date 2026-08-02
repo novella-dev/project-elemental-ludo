@@ -40,7 +40,7 @@ namespace ElementalLudo.Gameplay
             return true;
         }
 
-        public static bool HasWon(IReadOnlyList<Token> tokens)
+        public static bool HasWon(BoardState boardState, IReadOnlyList<Token> tokens)
         {
             if (tokens == null || tokens.Count != TokensRequiredToWin)
             {
@@ -49,7 +49,7 @@ namespace ElementalLudo.Gameplay
 
             foreach (Token token in tokens)
             {
-                if (token == null || token.State != TokenState.Finished)
+                if (token == null || boardState.GetState(token) != TokenState.Finished)
                 {
                     return false;
                 }

@@ -22,14 +22,10 @@ namespace ElementalLudo.Tokens
     {
         [SerializeField] private int tokenId;
         [SerializeField] private PlayerStyle ownerStyle;
-        [SerializeField] private TokenState state = TokenState.Home;
-        [SerializeField] private int routeIndex = -1;
         [SerializeField] private TokenVisual visual;
 
         public int TokenId => tokenId;
         public PlayerStyle OwnerStyle => ownerStyle;
-        public TokenState State => state;
-        public int RouteIndex => routeIndex;
         public TokenInteractionState InteractionState { get; private set; }
 
         private void OnEnable()
@@ -46,27 +42,7 @@ namespace ElementalLudo.Tokens
         {
             tokenId = id;
             ownerStyle = style;
-            state = TokenState.Home;
-            routeIndex = -1;
             RefreshVisual();
-        }
-
-        public void MoveToTrack(int newRouteIndex)
-        {
-            state = TokenState.Track;
-            routeIndex = Mathf.Max(0, newRouteIndex);
-        }
-
-        public void SendHome()
-        {
-            state = TokenState.Home;
-            routeIndex = -1;
-        }
-
-        public void MarkFinished(int finalRouteIndex)
-        {
-            state = TokenState.Finished;
-            routeIndex = Mathf.Max(0, finalRouteIndex);
         }
 
         public void SetInteractionState(TokenInteractionState interactionState)

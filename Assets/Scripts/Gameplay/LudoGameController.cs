@@ -41,6 +41,7 @@ namespace ElementalLudo.Gameplay
             new Dictionary<Token, Vector3>(16);
 
         private IPlayerController playerController;
+        private BoardState boardState;
         private int activePlayerIndex;
         private int rolledValue;
         private bool actionPerformed;
@@ -206,7 +207,7 @@ namespace ElementalLudo.Gameplay
             {
                 foreach (Token token in player.Tokens)
                 {
-                    token.SendHome();
+                    boardState.SetHome(token);
                     token.transform.position = homePositions[token];
                     token.SetInteractionState(TokenInteractionState.Normal);
                 }
@@ -328,7 +329,13 @@ namespace ElementalLudo.Gameplay
                 players.Add(new LudoPlayerState(style, playerTokens, route));
             }
 
-            return players.Count == 4;
+            if (players.Count != 4)
+            {
+                return false;
+            }
+
+            boardState = new BoardState(players);
+            return true;
         }
 
         private void HandleDiceRolled(int value)
@@ -419,6 +426,7 @@ namespace ElementalLudo.Gameplay
         {
             LudoPlayerState player = players[activePlayerIndex];
             LudoRulesEngine.CalculateLegalActions(
+                boardState,
                 player,
                 players,
                 rolledValue,
@@ -480,14 +488,14 @@ namespace ElementalLudo.Gameplay
                 yield return MoveTokenTo(
                     token,
                     GetRoutePosition(player, token, 0));
-                token.MoveToTrack(0);
+                boardState.SetTrack(token, 0);
                 CaptureOpponentTokensOnCell(player, token);
                 RepositionSameColorTokens(player);
                 statusMessage = $"{token.name} entered the starting square.";
             }
             else
             {
-                int firstStep = token.RouteIndex + 1;
+                int firstStep = boardState.GetRouteIndex(token) + 1;
                 for (int routeIndex = firstStep;
                      routeIndex <= action.DestinationRouteIndex;
                      routeIndex++)
@@ -495,7 +503,7 @@ namespace ElementalLudo.Gameplay
                     yield return MoveTokenTo(
                         token,
                         GetRoutePosition(player, token, routeIndex));
-                    token.MoveToTrack(routeIndex);
+                    boardState.SetTrack(token, routeIndex);
                 }
 
                 CaptureOpponentTokensOnCell(player, token);
@@ -503,7 +511,7 @@ namespace ElementalLudo.Gameplay
 
                 if (action.DestinationRouteIndex == player.Route.Length - 1)
                 {
-                    token.MarkFinished(action.DestinationRouteIndex);
+                    boardState.SetFinished(token, action.DestinationRouteIndex);
                     statusMessage = $"{token.name} reached the goal.";
                 }
                 else
@@ -513,7 +521,7 @@ namespace ElementalLudo.Gameplay
                 }
             }
 
-            if (LudoMovementRules.HasWon(player.Tokens))
+            if (LudoMovementRules.HasWon(boardState, player.Tokens))
             {
                 EndGame(player);
                 yield break;
@@ -558,9 +566,9 @@ namespace ElementalLudo.Gameplay
             ClearReachableCells();
             consecutiveSixes = 0;
 
-            if (lastMovedToken != null && lastMovedToken.State != TokenState.Home)
+            if (lastMovedToken != null && boardState.GetState(lastMovedToken) != TokenState.Home)
             {
-                lastMovedToken.SendHome();
+                boardState.SetHome(lastMovedToken);
                 lastMovedToken.transform.position = homePositions[lastMovedToken];
                 lastMovedToken.SetInteractionState(TokenInteractionState.Normal);
 
@@ -684,7 +692,7 @@ namespace ElementalLudo.Gameplay
             int tokenIndex = -1;
             foreach (Token t in player.Tokens)
             {
-                if (t.State == TokenState.Track && t.RouteIndex == routeIndex)
+                if (boardState.GetState(t) == TokenState.Track && boardState.GetRouteIndex(t) == routeIndex)
                 {
                     if (t == token)
                     {
@@ -713,7 +721,8 @@ namespace ElementalLudo.Gameplay
 
         private Vector2Int GetTokenLogicalCell(Token token)
         {
-            if (token.State != TokenState.Track && token.State != TokenState.Finished)
+            TokenState state = boardState.GetState(token);
+            if (state != TokenState.Track && state != TokenState.Finished)
             {
                 return new Vector2Int(int.MinValue, int.MinValue);
             }
@@ -722,7 +731,7 @@ namespace ElementalLudo.Gameplay
             {
                 if (player.Style == token.OwnerStyle)
                 {
-                    return player.Route[token.RouteIndex];
+                    return player.Route[boardState.GetRouteIndex(token)];
                 }
             }
 
@@ -732,13 +741,14 @@ namespace ElementalLudo.Gameplay
         private void CaptureOpponentTokensOnCell(LudoPlayerState movingPlayer, Token movingToken)
         {
             List<Token> captured = LudoRulesEngine.GetCapturedTokens(
+                boardState,
                 movingPlayer,
                 players,
                 movingToken);
 
             foreach (Token token in captured)
             {
-                token.SendHome();
+                boardState.SetHome(token);
                 token.transform.position = homePositions[token];
                 token.SetInteractionState(TokenInteractionState.Normal);
                 captureHappenedThisTurn = true;
@@ -751,10 +761,10 @@ namespace ElementalLudo.Gameplay
         {
             foreach (Token token in player.Tokens)
             {
-                if (token.State == TokenState.Track)
+                if (boardState.GetState(token) == TokenState.Track)
                 {
                     Vector3 newPosition = GetRoutePosition(
-                        player, token, token.RouteIndex);
+                        player, token, boardState.GetRouteIndex(token));
                     token.transform.position = newPosition;
                 }
             }

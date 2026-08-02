@@ -6,14 +6,16 @@ namespace ElementalLudo.Gameplay
 {
     /// <summary>
     /// Pure Parchís/Ludo rules. Every method here is a function of its
-    /// inputs: no scene state, no side effects, nothing mutated except the
-    /// caller-supplied output collections. This is what lets the rules be
-    /// unit-tested, run inside an AI's look-ahead, or reused by a future
-    /// combat/roguelike layer without dragging Unity along.
+    /// inputs (including the BoardState it's handed): no scene state, no
+    /// side effects, nothing mutated except the caller-supplied output
+    /// collections. This is what lets the rules be unit-tested, run inside
+    /// an AI's look-ahead against a cloned BoardState, or reused by a
+    /// future combat/roguelike layer without dragging Unity along.
     /// </summary>
     public static class LudoRulesEngine
     {
         public static void CalculateLegalActions(
+            BoardState boardState,
             LudoPlayerState activePlayer,
             IReadOnlyList<LudoPlayerState> allPlayers,
             int rolledValue,
@@ -23,11 +25,12 @@ namespace ElementalLudo.Gameplay
 
             foreach (Token token in activePlayer.Tokens)
             {
-                if (LudoMovementRules.CanLeaveHome(token.State, rolledValue))
+                TokenState state = boardState.GetState(token);
+                if (LudoMovementRules.CanLeaveHome(state, rolledValue))
                 {
                     Vector2Int startCell = activePlayer.Route[0];
-                    if (!IsBarrier(allPlayers, startCell) &&
-                        !IsCellFull(allPlayers, startCell))
+                    if (!IsBarrier(boardState, allPlayers, startCell) &&
+                        !IsCellFull(boardState, allPlayers, startCell))
                     {
                         results.Add(new LudoLegalAction(
                             token,
@@ -38,9 +41,10 @@ namespace ElementalLudo.Gameplay
                     continue;
                 }
 
+                int routeIndex = boardState.GetRouteIndex(token);
                 if (LudoMovementRules.TryGetDestination(
-                        token.State,
-                        token.RouteIndex,
+                        state,
+                        routeIndex,
                         rolledValue,
                         activePlayer.Route.Length,
                         out int destination))
@@ -49,11 +53,12 @@ namespace ElementalLudo.Gameplay
                     bool destinationIsCenter =
                         destination == activePlayer.Route.Length - 1;
                     if (!IsPathBlocked(
+                            boardState,
                             allPlayers,
                             activePlayer.Route,
-                            token.RouteIndex + 1,
+                            routeIndex + 1,
                             destination) &&
-                        (destinationIsCenter || !IsCellFull(allPlayers, destinationCell)))
+                        (destinationIsCenter || !IsCellFull(boardState, allPlayers, destinationCell)))
                     {
                         results.Add(new LudoLegalAction(
                             token,
@@ -65,12 +70,13 @@ namespace ElementalLudo.Gameplay
         }
 
         public static bool IsBarrier(
+            BoardState boardState,
             IReadOnlyList<LudoPlayerState> allPlayers,
             Vector2Int cell)
         {
             foreach (LudoPlayerState player in allPlayers)
             {
-                if (CountSameColorTokensOnCell(player, cell) >= 2)
+                if (CountSameColorTokensOnCell(boardState, player, cell) >= 2)
                 {
                     return true;
                 }
@@ -80,14 +86,15 @@ namespace ElementalLudo.Gameplay
         }
 
         public static int CountSameColorTokensOnCell(
+            BoardState boardState,
             LudoPlayerState player,
             Vector2Int cell)
         {
             int count = 0;
             foreach (Token token in player.Tokens)
             {
-                if (token.State == TokenState.Track &&
-                    player.Route[token.RouteIndex] == cell)
+                if (boardState.GetState(token) == TokenState.Track &&
+                    player.Route[boardState.GetRouteIndex(token)] == cell)
                 {
                     count++;
                 }
@@ -97,6 +104,7 @@ namespace ElementalLudo.Gameplay
         }
 
         public static int CountTokensOnCell(
+            BoardState boardState,
             IReadOnlyList<LudoPlayerState> allPlayers,
             Vector2Int cell)
         {
@@ -105,12 +113,12 @@ namespace ElementalLudo.Gameplay
             {
                 foreach (Token token in player.Tokens)
                 {
-                    if (token.State != TokenState.Track)
+                    if (boardState.GetState(token) != TokenState.Track)
                     {
                         continue;
                     }
 
-                    if (player.Route[token.RouteIndex] == cell)
+                    if (player.Route[boardState.GetRouteIndex(token)] == cell)
                     {
                         count++;
                     }
@@ -121,13 +129,15 @@ namespace ElementalLudo.Gameplay
         }
 
         public static bool IsCellFull(
+            BoardState boardState,
             IReadOnlyList<LudoPlayerState> allPlayers,
             Vector2Int cell)
         {
-            return CountTokensOnCell(allPlayers, cell) >= LudoBoardRoutes.MaxTokensPerCell;
+            return CountTokensOnCell(boardState, allPlayers, cell) >= LudoBoardRoutes.MaxTokensPerCell;
         }
 
         public static bool IsPathBlocked(
+            BoardState boardState,
             IReadOnlyList<LudoPlayerState> allPlayers,
             Vector2Int[] route,
             int startIndex,
@@ -135,7 +145,7 @@ namespace ElementalLudo.Gameplay
         {
             for (int i = startIndex; i <= endIndex; i++)
             {
-                if (IsBarrier(allPlayers, route[i]))
+                if (IsBarrier(boardState, allPlayers, route[i]))
                 {
                     return true;
                 }
@@ -152,12 +162,13 @@ namespace ElementalLudo.Gameplay
         /// this capture, resolve a fight instead").
         /// </summary>
         public static List<Token> GetCapturedTokens(
+            BoardState boardState,
             LudoPlayerState movingPlayer,
             IReadOnlyList<LudoPlayerState> allPlayers,
             Token movingToken)
         {
             List<Token> captured = new List<Token>();
-            Vector2Int movingCell = movingPlayer.Route[movingToken.RouteIndex];
+            Vector2Int movingCell = movingPlayer.Route[boardState.GetRouteIndex(movingToken)];
 
             if (LudoBoardRoutes.IsSafeCell(movingCell))
             {
@@ -173,12 +184,12 @@ namespace ElementalLudo.Gameplay
 
                 foreach (Token token in player.Tokens)
                 {
-                    if (token.State != TokenState.Track)
+                    if (boardState.GetState(token) != TokenState.Track)
                     {
                         continue;
                     }
 
-                    if (player.Route[token.RouteIndex] == movingCell)
+                    if (player.Route[boardState.GetRouteIndex(token)] == movingCell)
                     {
                         captured.Add(token);
                     }
