@@ -161,25 +161,25 @@ namespace ElementalLudo.Gameplay
                     320f),
                 panelStyle);
 
-            GUILayout.Label("ELEMENTAL RULES", sectionLabelStyle);
+            GUILayout.Label("REGLAS ELEMENTALES", sectionLabelStyle);
             GUILayout.Space(6f);
 
             DrawElementalRuleLine(
                 LightningColor,
-                "Lightning (Yellow)",
-                "Move distance is roll + 1. Leaving home still needs a 5, and bonus turns/three-sixes still use the real roll.");
+                "Rayo (Amarillo)",
+                "La distancia de movimiento es la tirada + 1. Salir de casa sigue necesitando un 5, y el turno extra/tres seises siguen usando la tirada real.");
             DrawElementalRuleLine(
                 WaterColor,
-                "Water (Blue)",
-                "Ignores barriers of any color on its own moves. A water barrier still blocks everyone else normally.");
+                "Agua (Azul)",
+                "Ignora barreras de cualquier color en su propio movimiento. Una barrera de agua sigue bloqueando a los demás con normalidad.");
             DrawElementalRuleLine(
                 FireColor,
-                "Fire (Red)",
-                "Captures on safe cells too — for Fire, no cell is safe for rivals.");
+                "Fuego (Rojo)",
+                "Captura también en casillas seguras — para el fuego, ninguna casilla es segura para los rivales.");
             DrawElementalRuleLine(
                 PlantColor,
-                "Plant (Green)",
-                "Immune to captures from Water specifically. Fire and Lightning still capture it normally.");
+                "Planta (Verde)",
+                "Inmune a las capturas de Agua específicamente. Fuego y Rayo la capturan con normalidad.");
 
             GUILayout.EndArea();
         }
