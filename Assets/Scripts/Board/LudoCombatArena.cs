@@ -47,7 +47,8 @@ namespace ElementalLudo.Board
         // XY plane and -Z is up, so "taller" means more negative.
         private static readonly Vector3 Up = new Vector3(0f, 0f, -1f);
 
-        private const int DefaultPreset = 1;
+        /// <summary>Index into <see cref="Presets"/>: the diagonal, chosen by the user.</summary>
+        private const int DefaultPreset = 2;
         private const float ViewBlendDuration = 0.45f;
 
         /// <summary>How far a die rises when the pointer is over it.</summary>
@@ -58,10 +59,11 @@ namespace ElementalLudo.Board
         private static readonly int OutlineWidthId = Shader.PropertyToID("_OutlineWidth");
 
         /// <summary>
-        /// The four framings offered to the player. Static rather than
-        /// serialized on purpose: the arena builds itself at runtime and is
-        /// never saved in a prefab, so Inspector fields on it are unreachable —
-        /// which is exactly why these need buttons in the first place.
+        /// The framings that were tried. The arena is fixed on
+        /// <see cref="DefaultPreset"/> now that one was picked, but the rest
+        /// are kept named so switching is a one-line change — they cannot be
+        /// Inspector fields, since the arena builds itself at runtime and never
+        /// lands in a prefab.
         /// </summary>
         private static readonly ArenaViewPreset[] Presets =
         {
@@ -70,8 +72,6 @@ namespace ElementalLudo.Board
             new ArenaViewPreset("3 · Diagonal", 34f, 44f, 27f, 36f),
             new ArenaViewPreset("4 · Tribuna", 0f, 62f, 24f, 42f)
         };
-
-        private static readonly string[] PresetLabelCache = BuildPresetLabels();
 
         [Header("Layout")]
         [SerializeField] private float diceSpacing = 1.15f;
@@ -100,11 +100,14 @@ namespace ElementalLudo.Board
         [SerializeField] private float archRise = 1.55f;
         [SerializeField] private float archThickness = 0.36f;
         [SerializeField] private float archDepth = 0.52f;
-        [SerializeField] private Color stoneLower = new Color(0.50f, 0.38f, 0.27f);
-        [SerializeField] private Color stoneUpper = new Color(0.72f, 0.60f, 0.45f);
+        // Kept bright: the shader's darkest band multiplies by 0.62, and any
+        // face turned away from the key light lands there. Stone that reads
+        // well lit has to survive that cut without going to mud.
+        [SerializeField] private Color stoneLower = new Color(0.60f, 0.48f, 0.36f);
+        [SerializeField] private Color stoneUpper = new Color(0.82f, 0.71f, 0.56f);
 
         [Header("Cel Outline")]
-        [SerializeField] private float outlineWidth = 0.055f;
+        [SerializeField] private float outlineWidth = 0.04f;
         [SerializeField] private Color outlineColor = new Color(0.03f, 0.02f, 0.02f);
 
         [Header("Dice Animation")]
@@ -161,13 +164,6 @@ namespace ElementalLudo.Board
 
         /// <summary>Where the arena sits, well away from the board.</summary>
         private Vector3 Origin => new Vector3(ArenaDistance, 0f, 0f);
-
-        /// <summary>
-        /// Button labels for the four framings, in order. Cached rather than
-        /// built per call: the only caller is an IMGUI panel, which would ask
-        /// for it every frame.
-        /// </summary>
-        public static IReadOnlyList<string> PresetLabels => PresetLabelCache;
 
         public int CameraPreset => cameraPreset;
 
@@ -821,12 +817,14 @@ namespace ElementalLudo.Board
             float topZ)
         {
             const int segments = 10;
+            float plinthRadius = columnRadius * 1.55f;
+            float capitalRadius = columnRadius * 1.5f;
             float plinthZ = wallTopZ - 0.34f;
             float capitalZ = topZ + 0.42f;
 
             // Rooted below the wall's top edge so no gap can open under it.
             builder.AddCylinder(
-                foot, columnRadius * 1.55f,
+                foot, plinthRadius,
                 FloorDepth, plinthZ,
                 segments, stoneLower, stoneLower);
             builder.AddCylinder(
@@ -834,10 +832,21 @@ namespace ElementalLudo.Board
                 plinthZ, capitalZ,
                 segments, stoneLower, stoneUpper);
             builder.AddCylinder(
-                foot, columnRadius * 1.5f,
+                foot, capitalRadius,
                 capitalZ, topZ,
                 segments, stoneUpper, stoneUpper);
-            builder.AddDisc(foot, columnRadius * 1.5f, topZ, segments, stoneUpper);
+
+            // Every step in radius leaves an opening into the hollow shaft.
+            // Closed here, top and bottom, so no part of the column shows its
+            // unlit inside.
+            builder.AddDisc(foot, plinthRadius, FloorDepth, segments, stoneLower, -Up);
+            builder.AddAnnulus(
+                foot, columnRadius, plinthRadius,
+                plinthZ, segments, stoneLower, Up);
+            builder.AddAnnulus(
+                foot, columnRadius, capitalRadius,
+                capitalZ, segments, stoneUpper, -Up);
+            builder.AddDisc(foot, capitalRadius, topZ, segments, stoneUpper, Up);
         }
 
         /// <summary>
@@ -921,17 +930,6 @@ namespace ElementalLudo.Board
                 OuterFar = outer + side,
                 Outward = outward
             };
-        }
-
-        private static string[] BuildPresetLabels()
-        {
-            string[] labels = new string[Presets.Length];
-            for (int index = 0; index < Presets.Length; index++)
-            {
-                labels[index] = Presets[index].Label;
-            }
-
-            return labels;
         }
 
         private static void ConfigureRenderer(MeshRenderer meshRenderer)
@@ -1092,11 +1090,39 @@ namespace ElementalLudo.Board
             GameObject model = BuildCombatantModel(token.OwnerStyle, holder.transform);
             if (model == null)
             {
-                Destroy(holder);
-                return null;
+                // A style with no model, or one with nothing to measure, still
+                // has to show up: a duel with an invisible combatant reads as a
+                // bug even when the fight itself is running fine.
+                BuildStandInCombatant(holder.transform, token.OwnerStyle.TokenColor);
             }
 
             return holder;
+        }
+
+        /// <summary>A plain coloured pillar, used when the real model is unusable.</summary>
+        private void BuildStandInCombatant(Transform parent, Color color)
+        {
+            ArenaMeshBuilder builder = new ArenaMeshBuilder();
+            float radius = tokenSize * 0.28f;
+            builder.AddCylinder(
+                Vector2.zero, radius,
+                FloorDepth, FloorDepth - tokenSize,
+                14, color * 0.75f, color);
+            builder.AddDisc(
+                Vector2.zero, radius, FloorDepth - tokenSize, 14, color, Up);
+
+            GameObject standIn = new GameObject("CombatantStandIn")
+            {
+                hideFlags = HideFlags.DontSave
+            };
+            standIn.transform.SetParent(parent, false);
+            standIn.transform.localPosition = Vector3.zero;
+            standIn.AddComponent<MeshFilter>().sharedMesh =
+                builder.Build("CombatantStandIn");
+
+            MeshRenderer standInRenderer = standIn.AddComponent<MeshRenderer>();
+            ConfigureRenderer(standInRenderer);
+            standInRenderer.sharedMaterial = stoneMaterial;
         }
 
         private GameObject BuildCombatantModel(PlayerStyle style, Transform parent)
@@ -1123,50 +1149,100 @@ namespace ElementalLudo.Board
         }
 
         /// <summary>
-        /// Scales the model to a readable size and then drops it onto the
-        /// holder's position. The recentre matters: these are imported GLBs
-        /// whose pivots sit wherever the artist left them, and without it a
-        /// model can end up scaled correctly but far outside the frame.
+        /// Scales the model to a readable size, centres it on the holder and
+        /// stands it on the arena floor.
+        ///
+        /// Every measurement is taken in the holder's own space, the way
+        /// TokenVisual does it on the board. Working in world space here is
+        /// what made both combatants vanish: the arena sits 500 units out, and
+        /// Renderer.bounds can still be reporting the prefab's untouched
+        /// position on the frame it is instantiated. Differencing a fresh world
+        /// target against a stale world centre then produced an offset of
+        /// roughly the arena's whole distance, throwing the model far out of
+        /// any camera's reach.
         /// </summary>
         private void FitToSize(GameObject model, Transform holder)
         {
-            if (!TryGetWorldBounds(model, out Bounds bounds))
+            if (!TryGetLocalBounds(model, holder, out Bounds bounds))
             {
                 return;
             }
 
-            float largest = Mathf.Max(bounds.size.x, Mathf.Max(bounds.size.y, bounds.size.z));
-            if (largest > Mathf.Epsilon)
+            float largest = Mathf.Max(
+                bounds.size.x,
+                Mathf.Max(bounds.size.y, bounds.size.z));
+            if (largest <= Mathf.Epsilon)
             {
-                model.transform.localScale *= tokenSize / largest;
+                return;
             }
 
-            if (TryGetWorldBounds(model, out bounds))
+            model.transform.localScale *= tokenSize / largest;
+            if (!TryGetLocalBounds(model, holder, out bounds))
             {
-                // Centre on the holder, then lift so the model rests on the
-                // arena floor instead of being buried half-way into it.
-                Vector3 target = holder.position;
-                target.z = FloorDepth - bounds.size.z * 0.5f;
-                model.transform.position += target - bounds.center;
+                return;
             }
+
+            // Centred across the board plane, and resting on the floor rather
+            // than buried half-way into it. -Z is up, so the model's lowest
+            // point is its largest Z.
+            model.transform.localPosition += new Vector3(
+                -bounds.center.x,
+                -bounds.center.y,
+                FloorDepth - bounds.max.z);
         }
 
-        private static bool TryGetWorldBounds(GameObject model, out Bounds bounds)
+        /// <summary>
+        /// Measures the model in <paramref name="space"/> the same way
+        /// TokenVisual measures one on the board: through Renderer.localBounds
+        /// and the transform matrices, never Renderer.bounds.
+        ///
+        /// The distinction is the whole fix. Transform matrices are correct the
+        /// moment they are written; a renderer's world bounds can still be
+        /// reporting the prefab's untouched position on the frame it was
+        /// instantiated. localBounds also works for any renderer type, so a
+        /// skinned model measures as readily as a plain mesh.
+        /// </summary>
+        private static bool TryGetLocalBounds(
+            GameObject model,
+            Transform space,
+            out Bounds bounds)
         {
             bounds = default;
-            Renderer[] renderers = model.GetComponentsInChildren<Renderer>(true);
-            if (renderers.Length == 0)
+            bool started = false;
+
+            foreach (Renderer modelRenderer in
+                     model.GetComponentsInChildren<Renderer>(true))
             {
-                return false;
+                if (modelRenderer == null)
+                {
+                    continue;
+                }
+
+                Bounds local = modelRenderer.localBounds;
+                Matrix4x4 toSpace = space.worldToLocalMatrix *
+                                    modelRenderer.localToWorldMatrix;
+
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 point = toSpace.MultiplyPoint3x4(
+                        local.center + new Vector3(
+                            (corner & 1) == 0 ? -local.extents.x : local.extents.x,
+                            (corner & 2) == 0 ? -local.extents.y : local.extents.y,
+                            (corner & 4) == 0 ? -local.extents.z : local.extents.z));
+
+                    if (!started)
+                    {
+                        bounds = new Bounds(point, Vector3.zero);
+                        started = true;
+                    }
+                    else
+                    {
+                        bounds.Encapsulate(point);
+                    }
+                }
             }
 
-            bounds = renderers[0].bounds;
-            for (int index = 1; index < renderers.Length; index++)
-            {
-                bounds.Encapsulate(renderers[index].bounds);
-            }
-
-            return true;
+            return started;
         }
 
         // ------------------------------------------------------------------
@@ -1371,12 +1447,46 @@ namespace ElementalLudo.Board
                 }
             }
 
+            /// <summary>
+            /// A flat ring closing the step between two stacked cylinders of
+            /// different radii. Without these the column is an open tube and
+            /// the camera looks straight into its unlit hollow, which reads as
+            /// a black core running up the middle of the stone.
+            /// </summary>
+            public void AddAnnulus(
+                Vector2 center,
+                float innerRadius,
+                float outerRadius,
+                float z,
+                int segments,
+                Color color,
+                Vector3 normal)
+            {
+                for (int segment = 0; segment < segments; segment++)
+                {
+                    float a0 = Mathf.PI * 2f * segment / segments;
+                    float a1 = Mathf.PI * 2f * (segment + 1) / segments;
+
+                    Vector3 d0 = new Vector3(Mathf.Cos(a0), Mathf.Sin(a0), 0f);
+                    Vector3 d1 = new Vector3(Mathf.Cos(a1), Mathf.Sin(a1), 0f);
+
+                    AddQuad(
+                        Ring(center, d0, innerRadius, z),
+                        Ring(center, d1, innerRadius, z),
+                        Ring(center, d1, outerRadius, z),
+                        Ring(center, d0, outerRadius, z),
+                        normal, normal, normal, normal,
+                        color, color, color, color);
+                }
+            }
+
             public void AddDisc(
                 Vector2 center,
                 float radius,
                 float z,
                 int segments,
-                Color color)
+                Color color,
+                Vector3 normal)
             {
                 for (int segment = 0; segment < segments; segment++)
                 {
@@ -1390,9 +1500,9 @@ namespace ElementalLudo.Board
                     vertices.Add(new Vector3(center.x, center.y, z));
                     vertices.Add(Ring(center, n0, radius, z));
                     vertices.Add(Ring(center, n1, radius, z));
-                    normals.Add(Up);
-                    normals.Add(Up);
-                    normals.Add(Up);
+                    normals.Add(normal);
+                    normals.Add(normal);
+                    normals.Add(normal);
                     colors.Add(color);
                     colors.Add(color);
                     colors.Add(color);

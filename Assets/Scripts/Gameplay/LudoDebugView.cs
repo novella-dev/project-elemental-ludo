@@ -281,7 +281,7 @@ namespace ElementalLudo.Gameplay
         private void DrawCombatPanel()
         {
             const float width = 700f;
-            const float height = 226f;
+            const float height = 190f;
 
             LudoCombatSession session = controller.CombatSession;
             LudoCombatReport report = controller.CombatReport;
@@ -312,7 +312,6 @@ namespace ElementalLudo.Gameplay
                 DrawCombatScoreLine(defenderToken, report.Outcome.Defender, "DEFENSOR", false);
                 GUILayout.Space(8f);
                 DrawCombatVerdict(report);
-                DrawCombatCameraRow();
                 GUILayout.EndArea();
                 return;
             }
@@ -342,45 +341,7 @@ namespace ElementalLudo.Gameplay
 
             GUILayout.Space(6f);
             DrawCombatControls(session);
-            DrawCombatCameraRow();
             GUILayout.EndArea();
-        }
-
-        /// <summary>
-        /// Framing buttons for the arena. They belong here rather than on the
-        /// arena because it builds itself at runtime and never lands in a
-        /// prefab, so its own fields have no Inspector to be tweaked from.
-        /// </summary>
-        private void DrawCombatCameraRow()
-        {
-            IReadOnlyList<string> labels = controller.CombatCameraLabels;
-            if (labels == null || labels.Count == 0)
-            {
-                return;
-            }
-
-            GUILayout.Space(6f);
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("CÁMARA", sectionLabelStyle, GUILayout.Width(72f));
-
-            int current = controller.CombatCameraPreset;
-            for (int index = 0; index < labels.Count; index++)
-            {
-                // The one already in use reads as the current setting rather
-                // than as a button that does nothing.
-                GUI.enabled = index != current;
-                if (GUILayout.Button(
-                        labels[index],
-                        actionCardStyle,
-                        GUILayout.Width(112f)))
-                {
-                    controller.SetCombatCameraPreset(index);
-                }
-
-                GUI.enabled = true;
-            }
-
-            GUILayout.EndHorizontal();
         }
 
         /// <summary>One side's running total, marked when it's their turn.</summary>
