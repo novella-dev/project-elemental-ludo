@@ -44,8 +44,14 @@ namespace ElementalLudo.Gameplay
 
         [Header("Adventure Combat")]
         [Min(0f)]
-        [Tooltip("How long a duel the player is involved in stays on screen. AI-versus-AI duels never show and ignore this.")]
+        [Tooltip("How long the final result stays on screen. AI-versus-AI duels never show and ignore all of these.")]
         [SerializeField] private float combatDisplayDuration = 2.2f;
+        [Min(0f)]
+        [Tooltip("Pause before each side starts its turn, so the throw reads as an event.")]
+        [SerializeField] private float combatThrowDelay = 0.6f;
+        [Min(0f)]
+        [Tooltip("Pause between each AI reroll, so the player can follow what it kept.")]
+        [SerializeField] private float combatRerollDelay = 0.45f;
 
         private const int MaxMoveHistoryEntries = 30;
         private const float SharedCellOffsetMagnitude = 0.55f;
@@ -88,6 +94,8 @@ namespace ElementalLudo.Gameplay
         private bool captureRepelledAttacker;
         private bool combatVisible;
         private LudoCombatReport combatReport;
+        private LudoCombatSession combatSession;
+        private bool combatTurnConfirmed;
         private int activePlayerIndex;
         private int rolledValue;
         private int pendingBonusDistance;
@@ -125,6 +133,9 @@ namespace ElementalLudo.Gameplay
         /// <summary>True while a duel the player is involved in is on screen.</summary>
         public bool IsCombatVisible => combatVisible;
         public LudoCombatReport CombatReport => combatReport;
+
+        /// <summary>The duel in progress, or null once it has resolved.</summary>
+        public LudoCombatSession CombatSession => combatSession;
         public bool IsInitialized => initialized;
         public bool IsDiceRolling => dice != null && dice.IsRolling;
         public LudoGameMode DefaultMode => defaultMode;
@@ -1396,24 +1407,27 @@ namespace ElementalLudo.Gameplay
 
             if (settings.Mode == LudoGameMode.Adventure)
             {
-                // Same resolver either way: a duel nobody watched can't
-                // disagree with one the player saw.
-                LudoCombatOutcome outcome = LudoCombatResolver.Resolve();
-                bool watched = IsHumanInvolvedInCapture(captured);
+                Token defenderToken = captured[0];
+                LudoCombatOutcome outcome;
 
-                if (watched)
+                if (IsHumanInvolvedInCapture(captured))
                 {
+                    yield return PlayDuel(movingToken, defenderToken);
+                    outcome = combatReport.Outcome;
+                }
+                else
+                {
+                    // Nobody is watching, so the whole duel collapses into one
+                    // call — the same code both sides would have played by
+                    // hand, just without the waiting.
+                    outcome = LudoCombatResolver.Resolve();
                     combatReport = new LudoCombatReport(
                         movingToken,
-                        captured[0],
+                        defenderToken,
                         outcome);
-                    combatVisible = true;
-                    statusMessage = "¡Duelo de dados!";
-                    yield return new WaitForSecondsRealtime(combatDisplayDuration);
-                    combatVisible = false;
                 }
 
-                LogCombat(movingToken, captured[0], outcome);
+                LogCombat(movingToken, defenderToken, outcome);
 
                 if (!outcome.AttackerWins)
                 {
@@ -1428,6 +1442,80 @@ namespace ElementalLudo.Gameplay
             }
 
             captureAwardedBonus = ApplyCaptures(movingPlayer, movingToken, captured);
+        }
+
+        /// <summary>
+        /// Plays a duel the player is part of, one side at a time: the
+        /// attacker finishes its hand, then the defender plays knowing the
+        /// score to beat. Human sides wait for input; AI sides spend their
+        /// rerolls on a timer so the player can follow what happened.
+        /// </summary>
+        private IEnumerator PlayDuel(Token attackerToken, Token defenderToken)
+        {
+            PlayerStyle humanStyle = humanSeatIndex >= 0 && humanSeatIndex < players.Count
+                ? players[humanSeatIndex].Style
+                : null;
+
+            combatSession = new LudoCombatSession(
+                attackerToken,
+                defenderToken,
+                attackerToken.OwnerStyle == humanStyle,
+                defenderToken.OwnerStyle == humanStyle);
+
+            combatVisible = true;
+            statusMessage = "¡Duelo de dados!";
+
+            while (combatSession.Phase != LudoCombatPhase.Resolved)
+            {
+                yield return new WaitForSecondsRealtime(combatThrowDelay);
+
+                if (combatSession.IsHumanTurn)
+                {
+                    combatTurnConfirmed = false;
+                    // Held here until the player runs out of rerolls or says
+                    // they're done; the UI flips the flag.
+                    yield return new WaitUntil(() => combatTurnConfirmed);
+                }
+                else
+                {
+                    LudoCombatHand hand = combatSession.CurrentHand;
+                    while (hand != null && hand.CanReroll)
+                    {
+                        int index = LudoCombatResolver.SuggestReroll(hand.Dice);
+                        if (index < 0 || !hand.TryReroll(index))
+                        {
+                            break;
+                        }
+
+                        yield return new WaitForSecondsRealtime(combatRerollDelay);
+                    }
+                }
+
+                combatSession.EndCurrentTurn();
+            }
+
+            combatReport = combatSession.BuildReport();
+            yield return new WaitForSecondsRealtime(combatDisplayDuration);
+
+            combatVisible = false;
+            combatSession = null;
+        }
+
+        /// <summary>Called by the UI to spend one of the player's rerolls.</summary>
+        public bool RequestCombatReroll(int dieIndex)
+        {
+            return combatSession != null &&
+                   combatSession.IsHumanTurn &&
+                   combatSession.TryReroll(dieIndex);
+        }
+
+        /// <summary>Called by the UI when the player is done with their hand.</summary>
+        public void ConfirmCombatHand()
+        {
+            if (combatSession != null && combatSession.IsHumanTurn)
+            {
+                combatTurnConfirmed = true;
+            }
         }
 
         /// <summary>The attacker survives but is pushed back where it came from.</summary>

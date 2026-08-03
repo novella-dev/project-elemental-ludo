@@ -276,11 +276,14 @@ namespace ElementalLudo.Gameplay
         /// </summary>
         private void DrawCombatPanel()
         {
-            const float width = 460f;
-            const float height = 260f;
+            const float width = 520f;
+            const float height = 360f;
 
+            LudoCombatSession session = controller.CombatSession;
             LudoCombatReport report = controller.CombatReport;
-            if (report.Attacker == null || report.Defender == null)
+            Token attackerToken = session?.AttackerToken ?? report.Attacker;
+            Token defenderToken = session?.DefenderToken ?? report.Defender;
+            if (attackerToken == null || defenderToken == null)
             {
                 return;
             }
@@ -294,26 +297,128 @@ namespace ElementalLudo.Gameplay
                 panelStyle);
 
             GUILayout.Label("DUELO DE DADOS", titleStyle);
-            GUILayout.Space(10f);
+            GUILayout.Space(8f);
 
-            DrawCombatSide(report.Attacker, report.Outcome.Attacker, "ATACA");
-            GUILayout.Space(6f);
-            DrawCombatSide(report.Defender, report.Outcome.Defender, "DEFIENDE");
-            GUILayout.Space(12f);
+            if (session == null)
+            {
+                // Duel over: only the final scores are left to show.
+                DrawCombatSide(attackerToken, report.Outcome.Attacker, "ATACANTE");
+                GUILayout.Space(6f);
+                DrawCombatSide(defenderToken, report.Outcome.Defender, "DEFENSOR");
+                GUILayout.Space(12f);
+                DrawCombatVerdict(report);
+                GUILayout.EndArea();
+                return;
+            }
 
+            DrawCombatLiveSide(
+                session,
+                attackerToken,
+                session.Attacker,
+                "ATACANTE",
+                LudoCombatPhase.AttackerTurn);
+            GUILayout.Space(8f);
+
+            if (session.Phase == LudoCombatPhase.AttackerTurn)
+            {
+                GUILayout.Label("El defensor espera su turno...", hintStyle);
+            }
+            else
+            {
+                DrawCombatLiveSide(
+                    session,
+                    defenderToken,
+                    session.Defender,
+                    "DEFENSOR",
+                    LudoCombatPhase.DefenderTurn);
+                GUILayout.Space(4f);
+                GUILayout.Label(
+                    $"Necesita superar {session.ScoreToBeat} para resistir.",
+                    hintStyle);
+            }
+
+            GUILayout.EndArea();
+        }
+
+        private void DrawCombatVerdict(LudoCombatReport report)
+        {
             Token winner = report.Outcome.AttackerWins
                 ? report.Attacker
                 : report.Defender;
-            string verdict = report.Outcome.AttackerWins
-                ? "¡Captura!"
-                : "Rechazado";
+            string verdict = report.Outcome.AttackerWins ? "¡Captura!" : "Rechazado";
             GUILayout.Label(
                 $"{verdict}  —  gana " +
                 $"{LudoGameController.SpanishColorName(winner.OwnerStyle.PlayerId)} " +
                 $"{winner.TokenId}",
                 winnerStyle);
+        }
 
-            GUILayout.EndArea();
+        /// <summary>
+        /// A side mid-duel. Its dice become buttons while it's this side's
+        /// turn and a human is deciding — clicking one spends a reroll on it.
+        /// </summary>
+        private void DrawCombatLiveSide(
+            LudoCombatSession session,
+            Token token,
+            LudoCombatHand hand,
+            string role,
+            LudoCombatPhase phase)
+        {
+            bool isActiveSide = session.Phase == phase;
+            bool playerDecides = isActiveSide && session.IsHumanTurn;
+            LudoCombatRoll roll = hand.Evaluate();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Box(
+                string.Empty,
+                MakeAccentStyle(token.OwnerStyle.TokenColor),
+                GUILayout.Width(5f),
+                GUILayout.Height(58f));
+            GUILayout.Space(8f);
+            GUILayout.BeginVertical();
+
+            GUILayout.Label(
+                $"{role}  ·  " +
+                $"{LudoGameController.SpanishColorName(token.OwnerStyle.PlayerId)} " +
+                $"{token.TokenId}" +
+                (isActiveSide ? "   ← su turno" : string.Empty),
+                sectionLabelStyle);
+
+            GUILayout.BeginHorizontal();
+            for (int index = 0; index < hand.Dice.Count; index++)
+            {
+                string face = hand.Dice[index].ToString();
+                if (playerDecides && hand.CanReroll)
+                {
+                    if (GUILayout.Button(face, actionCardStyle, GUILayout.Width(38f)))
+                    {
+                        controller.RequestCombatReroll(index);
+                    }
+                }
+                else
+                {
+                    GUILayout.Box(face, badgeStyle, GUILayout.Width(38f), GUILayout.Height(30f));
+                }
+            }
+
+            GUILayout.EndHorizontal();
+            GUILayout.Label(LudoCombatInfo.Describe(roll), ruleTitleStyle);
+
+            if (playerDecides)
+            {
+                GUILayout.Label(
+                    hand.CanReroll
+                        ? $"Toca un dado para relanzarlo. Te quedan {hand.RerollsLeft}."
+                        : "Sin relanzamientos.",
+                    hintStyle);
+                if (GUILayout.Button("Plantarse", primaryButtonStyle))
+                {
+                    controller.ConfirmCombatHand();
+                }
+            }
+
+            GUILayout.EndVertical();
+            GUILayout.EndHorizontal();
         }
 
         private void DrawCombatSide(Token token, LudoCombatRoll roll, string role)
