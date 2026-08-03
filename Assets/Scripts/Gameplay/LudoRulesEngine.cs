@@ -15,13 +15,24 @@ namespace ElementalLudo.Gameplay
     /// </summary>
     public static class LudoRulesEngine
     {
+        /// <summary>
+        /// House rule: rolling a 6 while one of your own barriers (two
+        /// same-colour tokens sharing a square) is on the board obliges you
+        /// to break it — <paramref name="barrierBreakForced"/> comes back
+        /// true whenever that narrowed the choice, so the caller can tell
+        /// the player why their options just shrank. Only ever removes
+        /// options, never adds any: if neither barrier token has a legal
+        /// move with this roll, every other option stays open and the flag
+        /// stays false.
+        /// </summary>
         public static void CalculateLegalActions(
             BoardState boardState,
             LudoPlayerState activePlayer,
             IReadOnlyList<LudoPlayerState> allPlayers,
             int rolledValue,
             LudoRulesContext context,
-            List<LudoLegalAction> results)
+            List<LudoLegalAction> results,
+            out bool barrierBreakForced)
         {
             results.Clear();
 
@@ -80,6 +91,62 @@ namespace ElementalLudo.Gameplay
                     }
                 }
             }
+
+            barrierBreakForced = rolledValue == 6 &&
+                RestrictToBarrierBreaksIfAny(boardState, activePlayer, results);
+        }
+
+        /// <summary>
+        /// Narrows <paramref name="results"/> to moves of the active
+        /// player's own barrier tokens, if at least one such move is
+        /// present. Returns whether it did.
+        /// </summary>
+        private static bool RestrictToBarrierBreaksIfAny(
+            BoardState boardState,
+            LudoPlayerState activePlayer,
+            List<LudoLegalAction> results)
+        {
+            bool anyBarrierBreak = false;
+            foreach (LudoLegalAction action in results)
+            {
+                if (action.Type == LudoActionType.Move &&
+                    IsOwnBarrierToken(boardState, activePlayer, action.Token))
+                {
+                    anyBarrierBreak = true;
+                    break;
+                }
+            }
+
+            if (!anyBarrierBreak)
+            {
+                return false;
+            }
+
+            for (int index = results.Count - 1; index >= 0; index--)
+            {
+                if (results[index].Type != LudoActionType.Move ||
+                    !IsOwnBarrierToken(boardState, activePlayer, results[index].Token))
+                {
+                    results.RemoveAt(index);
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>Whether <paramref name="token"/> shares its square with another of the same colour.</summary>
+        private static bool IsOwnBarrierToken(
+            BoardState boardState,
+            LudoPlayerState player,
+            Token token)
+        {
+            if (boardState.GetState(token) != TokenState.Track)
+            {
+                return false;
+            }
+
+            Vector2Int cell = player.Route[boardState.GetRouteIndex(token)];
+            return CountSameColorTokensOnCell(boardState, player, cell) >= 2;
         }
 
         /// <summary>

@@ -760,7 +760,7 @@ namespace ElementalLudo.Gameplay
                 consecutiveSixes = 0;
             }
 
-            CalculateLegalActions();
+            bool barrierBreakForced = CalculateLegalActions();
 
             if (legalActions.Count == 0)
             {
@@ -773,9 +773,18 @@ namespace ElementalLudo.Gameplay
 
             phase = LudoTurnPhase.AwaitingAction;
             SetTokenInteractionStates(true);
-            statusMessage = legalActions.Count == 1
-                ? "One valid action."
-                : $"Choose one of {legalActions.Count} valid actions.";
+
+            if (barrierBreakForced)
+            {
+                statusMessage = "¡6! Debes romper tu barrera.";
+                LogMove($"Turno de {SpanishColorName(ActivePlayer.PlayerId)}: el 6 obliga a romper la barrera.");
+            }
+            else
+            {
+                statusMessage = legalActions.Count == 1
+                    ? "One valid action."
+                    : $"Choose one of {legalActions.Count} valid actions.";
+            }
 
             HighlightReachableCells();
 
@@ -862,7 +871,8 @@ namespace ElementalLudo.Gameplay
             }
         }
 
-        private void CalculateLegalActions()
+        /// <summary>Returns whether rolling a 6 just forced a barrier break (never true for a bonus move).</summary>
+        private bool CalculateLegalActions()
         {
             LudoPlayerState player = players[activePlayerIndex];
             if (pendingBonusDistance > 0)
@@ -874,7 +884,7 @@ namespace ElementalLudo.Gameplay
                     pendingBonusDistance,
                     BuildRulesContext(),
                     legalActions);
-                return;
+                return false;
             }
 
             LudoRulesEngine.CalculateLegalActions(
@@ -883,7 +893,9 @@ namespace ElementalLudo.Gameplay
                 players,
                 rolledValue,
                 BuildRulesContext(),
-                legalActions);
+                legalActions,
+                out bool barrierBreakForced);
+            return barrierBreakForced;
         }
 
         public int GetActionMoveDistance(LudoLegalAction action)
