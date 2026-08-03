@@ -66,6 +66,16 @@ namespace ElementalLudo.Tokens
             }
         }
 
+        /// <summary>Classic parchís pawn (false) vs the elemental model (true).</summary>
+        public void SetUseElementalModel(bool value)
+        {
+            RefreshVisual();
+            if (visual != null)
+            {
+                visual.SetUseElementalModel(value);
+            }
+        }
+
         private void RefreshVisual()
         {
             if (visual == null)

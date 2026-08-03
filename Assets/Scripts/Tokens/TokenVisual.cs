@@ -81,6 +81,12 @@ namespace ElementalLudo.Tokens
         private Mesh tokenMesh;
         private MaterialPropertyBlock propertyBlock;
         private Color currentColor = NeutralColor;
+        private PlayerStyle currentStyle;
+
+        // The lathed pawn mesh below predates the elemental GLB models and
+        // still renders whenever a token has no custom model — this flag is
+        // what lets Classic mode fall back to it deliberately instead.
+        private bool useElementalModel = true;
         private Color customModelTint = Color.white;
         private Color customModelEmission = Color.black;
         private TokenInteractionState interactionState;
@@ -238,24 +244,42 @@ namespace ElementalLudo.Tokens
 
         public void SetStyle(PlayerStyle style)
         {
+            currentStyle = style;
+            ApplyStyle();
+        }
+
+        /// <summary>
+        /// Classic parchís pawns (true, the default) vs the elemental GLB
+        /// models (false). A no-op when nothing actually changes, since this
+        /// gets called once per token on every match start regardless of mode.
+        /// </summary>
+        public void SetUseElementalModel(bool value)
+        {
+            if (useElementalModel == value)
+            {
+                return;
+            }
+
+            useElementalModel = value;
+            ApplyStyle();
+        }
+
+        private void ApplyStyle()
+        {
+            PlayerStyle style = currentStyle;
+            bool showModel = useElementalModel && style != null;
+
             if (style == null)
             {
                 currentColor = NeutralColor;
-                customModelTint = Color.white;
-                customModelEmission = Color.black;
-                SetCustomModel(
-                    null,
-                    Vector3.zero,
-                    1f,
-                    1f,
-                    TokenModelMaterialMode.Preserve,
-                    false,
-                    0f,
-                    Color.black);
             }
             else
             {
                 currentColor = style.TokenColor;
+            }
+
+            if (showModel)
+            {
                 customModelTint = style.TokenModelTint;
                 customModelEmission = style.TokenModelEmission;
                 SetCustomModel(
@@ -267,6 +291,22 @@ namespace ElementalLudo.Tokens
                     style.TokenModelOutline,
                     style.TokenModelOutlineWidth,
                     style.TokenModelOutlineColor);
+            }
+            else
+            {
+                // Same plain look the original pawn always had: flat colour,
+                // no tint or glow riding along from an elemental style.
+                customModelTint = Color.white;
+                customModelEmission = Color.black;
+                SetCustomModel(
+                    null,
+                    Vector3.zero,
+                    1f,
+                    1f,
+                    TokenModelMaterialMode.Preserve,
+                    false,
+                    0f,
+                    Color.black);
             }
 
             ApplyColor();
