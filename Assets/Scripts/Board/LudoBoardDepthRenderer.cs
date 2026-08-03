@@ -19,13 +19,13 @@ namespace ElementalLudo.Board
         private const string BoardShaderName = "Elemental Ludo/Board Vertex Color";
         private const int CircleSegments = 48;
 
-        private static readonly Color BoardWhite = new Color32(248, 247, 242, 255);
-        private static readonly Color GridColor = new Color32(73, 78, 78, 255);
-        private static readonly Color Red = new Color32(211, 17, 54, 255);
-        private static readonly Color Blue = new Color32(62, 158, 207, 255);
-        private static readonly Color Green = new Color32(10, 105, 72, 255);
-        private static readonly Color Yellow = new Color32(242, 211, 62, 255);
-        private static readonly Color SafeCell = new Color32(172, 176, 176, 255);
+        private static readonly Color BoardWhite = LudoBoardVisualStyle.Paper;
+        private static readonly Color GridColor = LudoBoardVisualStyle.Ink;
+        private static readonly Color Red = LudoBoardVisualStyle.Red;
+        private static readonly Color Blue = LudoBoardVisualStyle.Blue;
+        private static readonly Color Green = LudoBoardVisualStyle.Green;
+        private static readonly Color Yellow = LudoBoardVisualStyle.Yellow;
+        private static readonly Color SafeCell = LudoBoardVisualStyle.SafeCell;
 
         [SerializeField] private LudoBoardDepthMode mode;
         [Tooltip("Classic look: raised colour discs in the corners instead of the elemental biome plates.")]
@@ -187,6 +187,17 @@ namespace ElementalLudo.Board
             AddTrianglePrism(topRight, bottomRight, center, -0.23f, 0.02f, Blue);
             AddTrianglePrism(bottomRight, bottomLeft, center, -0.23f, 0.02f, Yellow);
             AddTrianglePrism(bottomLeft, topLeft, center, -0.23f, 0.02f, Green);
+
+            const float inkDepth = -0.255f;
+            const float inkWidth = 0.055f;
+            AddStroke(topLeft, center, inkWidth, inkDepth, GridColor);
+            AddStroke(topRight, center, inkWidth, inkDepth, GridColor);
+            AddStroke(bottomRight, center, inkWidth, inkDepth, GridColor);
+            AddStroke(bottomLeft, center, inkWidth, inkDepth, GridColor);
+            AddStroke(topLeft, topRight, inkWidth, inkDepth, GridColor);
+            AddStroke(topRight, bottomRight, inkWidth, inkDepth, GridColor);
+            AddStroke(bottomRight, bottomLeft, inkWidth, inkDepth, GridColor);
+            AddStroke(bottomLeft, topLeft, inkWidth, inkDepth, GridColor);
         }
 
         private void DrawRaisedHomes()
@@ -317,13 +328,58 @@ namespace ElementalLudo.Board
 
         private void DrawMarker(Vector2 center, Color color)
         {
+            Vector2 worldCenter = LudoBoardLayout.ToWorld(center);
             AddWorldCylinder(
-                LudoBoardLayout.ToWorld(center),
+                worldCenter,
+                0.325f,
+                -0.265f,
+                -0.175f,
+                GridColor,
+                GridColor);
+            AddWorldCylinder(
+                worldCenter,
                 0.285f,
                 -0.275f,
                 -0.195f,
                 color,
                 Shade(color, 0.3f));
+        }
+
+        private void AddStroke(
+            Vector2 start,
+            Vector2 end,
+            float width,
+            float depth,
+            Color color)
+        {
+            Vector2 worldStart = LudoBoardLayout.ToWorld(start);
+            Vector2 worldEnd = LudoBoardLayout.ToWorld(end);
+            Vector2 direction = worldEnd - worldStart;
+            if (direction.sqrMagnitude <= Mathf.Epsilon)
+            {
+                return;
+            }
+
+            Vector2 offset =
+                new Vector2(-direction.y, direction.x).normalized * (width * 0.5f);
+            AddQuad(
+                new Vector3(
+                    worldStart.x - offset.x,
+                    worldStart.y - offset.y,
+                    depth),
+                new Vector3(
+                    worldEnd.x - offset.x,
+                    worldEnd.y - offset.y,
+                    depth),
+                new Vector3(
+                    worldEnd.x + offset.x,
+                    worldEnd.y + offset.y,
+                    depth),
+                new Vector3(
+                    worldStart.x + offset.x,
+                    worldStart.y + offset.y,
+                    depth),
+                color);
         }
 
         private static Color TrackColor(int x, int y)
@@ -482,12 +538,12 @@ namespace ElementalLudo.Board
 
         private static Color Lighten(Color color)
         {
-            return Color.Lerp(color, Color.white, 0.22f);
+            return LudoBoardVisualStyle.Lighten(color);
         }
 
         private static Color Shade(Color color, float strength)
         {
-            return Color.Lerp(color, Color.black, strength);
+            return LudoBoardVisualStyle.Shade(color, strength);
         }
 
         private static void DestroyGeneratedObject(Object target)

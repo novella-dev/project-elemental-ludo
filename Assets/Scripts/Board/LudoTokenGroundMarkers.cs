@@ -108,6 +108,7 @@ namespace ElementalLudo.Board
             markerMesh.SetVertices(vertices);
             markerMesh.SetColors(colors);
             markerMesh.SetTriangles(triangles, 0);
+            markerMesh.RecalculateNormals();
             markerMesh.RecalculateBounds();
         }
 

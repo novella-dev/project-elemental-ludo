@@ -57,10 +57,10 @@ namespace ElementalLudo.Board
         // center; decorations stay clear of that disc.
         private const float TokenOffset = 0.96f;
 
-        private static readonly Color PlayerRed = new Color32(211, 17, 54, 255);
-        private static readonly Color PlayerBlue = new Color32(62, 158, 207, 255);
-        private static readonly Color PlayerGreen = new Color32(10, 105, 72, 255);
-        private static readonly Color PlayerYellow = new Color32(242, 211, 62, 255);
+        private static readonly Color PlayerRed = LudoBoardVisualStyle.Red;
+        private static readonly Color PlayerBlue = LudoBoardVisualStyle.Blue;
+        private static readonly Color PlayerGreen = LudoBoardVisualStyle.Green;
+        private static readonly Color PlayerYellow = LudoBoardVisualStyle.Yellow;
 
         // Fire
         private static readonly Color AshDark = new Color(0.16f, 0.04f, 0.06f);
@@ -220,6 +220,8 @@ namespace ElementalLudo.Board
             terrainMesh.SetColors(colors);
             terrainMesh.SetUVs(1, animationData);
             terrainMesh.SetTriangles(triangles, 0);
+            terrainMesh.RecalculateNormals();
+            SmoothSharedVertexNormals(terrainMesh);
             terrainMesh.RecalculateBounds();
 
             GetComponent<MeshFilter>().sharedMesh = terrainMesh;
@@ -1230,6 +1232,55 @@ namespace ElementalLudo.Board
             float iy0 = min.y + RimWidth;
             float iy1 = max.y - RimWidth;
 
+            // Match the token ink: a slim, opaque line frames both edges of
+            // the coloured rim without changing its footprint or collider.
+            const float inkWidth = 0.07f;
+            const float inkDepthOffset = -0.012f;
+            float inkDepth = RimTopDepth + inkDepthOffset;
+            Color ink = LudoBoardVisualStyle.Ink;
+
+            AddFlatQuad(
+                new Vector2(min.x, min.y),
+                new Vector2(max.x, min.y + inkWidth),
+                inkDepth,
+                ink);
+            AddFlatQuad(
+                new Vector2(min.x, max.y - inkWidth),
+                new Vector2(max.x, max.y),
+                inkDepth,
+                ink);
+            AddFlatQuad(
+                new Vector2(min.x, min.y + inkWidth),
+                new Vector2(min.x + inkWidth, max.y - inkWidth),
+                inkDepth,
+                ink);
+            AddFlatQuad(
+                new Vector2(max.x - inkWidth, min.y + inkWidth),
+                new Vector2(max.x, max.y - inkWidth),
+                inkDepth,
+                ink);
+
+            AddFlatQuad(
+                new Vector2(ix0, iy0),
+                new Vector2(ix1, iy0 + inkWidth),
+                inkDepth,
+                ink);
+            AddFlatQuad(
+                new Vector2(ix0, iy1 - inkWidth),
+                new Vector2(ix1, iy1),
+                inkDepth,
+                ink);
+            AddFlatQuad(
+                new Vector2(ix0, iy0 + inkWidth),
+                new Vector2(ix0 + inkWidth, iy1 - inkWidth),
+                inkDepth,
+                ink);
+            AddFlatQuad(
+                new Vector2(ix1 - inkWidth, iy0 + inkWidth),
+                new Vector2(ix1, iy1 - inkWidth),
+                inkDepth,
+                ink);
+
             AddWall(new Vector2(ix0, iy0), new Vector2(ix1, iy0), RimTopDepth, GroundDepth, wall);
             AddWall(new Vector2(ix1, iy1), new Vector2(ix0, iy1), RimTopDepth, GroundDepth, wall);
             AddWall(new Vector2(ix0, iy1), new Vector2(ix0, iy0), RimTopDepth, GroundDepth, wall);
@@ -1547,7 +1598,7 @@ namespace ElementalLudo.Board
 
         private static Color Shade(Color color, float strength)
         {
-            return Color.Lerp(color, Color.black, strength);
+            return LudoBoardVisualStyle.Shade(color, strength);
         }
 
         // Qualified because `using System` makes a bare `Object` ambiguous.
