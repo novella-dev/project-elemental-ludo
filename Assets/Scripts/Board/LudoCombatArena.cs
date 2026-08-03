@@ -3,6 +3,7 @@ using ElementalLudo.DiceSystem;
 using ElementalLudo.Gameplay;
 using ElementalLudo.Tokens;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.Rendering;
 
 namespace ElementalLudo.Board
@@ -32,8 +33,11 @@ namespace ElementalLudo.Board
         // Far enough that nothing on the board can drift into frame.
         private const float ArenaDistance = 500f;
         private const string DiceShaderName = "Elemental Ludo/Token";
+        // The board's own shader: it already bands the same key light into
+        // three flat steps and reads vertex colour, which is the cel look the
+        // stonework wants. A dedicated arena shader was tried and silently
+        // failed to resolve, leaving the mesh material-less and magenta.
         private const string FloorShaderName = "Elemental Ludo/Board Vertex Color";
-        private const string StoneShaderName = "Elemental Ludo/Arena Cel";
         private const string OutlineShaderName = "Elemental Ludo/Token Outline";
 
         // Just behind the pieces, which stand at Z <= 0.
@@ -43,9 +47,11 @@ namespace ElementalLudo.Board
         // XY plane and -Z is up, so "taller" means more negative.
         private static readonly Vector3 Up = new Vector3(0f, 0f, -1f);
 
-        private const float FloorSquash = 0.72f;
         private const int DefaultPreset = 1;
         private const float ViewBlendDuration = 0.45f;
+
+        /// <summary>How far a die rises when the pointer is over it.</summary>
+        private const float HoverLift = 0.32f;
 
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
         private static readonly int OutlineColorId = Shader.PropertyToID("_OutlineColor");
@@ -59,10 +65,10 @@ namespace ElementalLudo.Board
         /// </summary>
         private static readonly ArenaViewPreset[] Presets =
         {
-            new ArenaViewPreset("1 · Cenital", 0f, 12f, 16.5f, 34f),
-            new ArenaViewPreset("2 · 2.5D", 0f, 38f, 18f, 34f),
-            new ArenaViewPreset("3 · Diagonal", 34f, 44f, 18.5f, 36f),
-            new ArenaViewPreset("4 · Tribuna", 0f, 62f, 16f, 42f)
+            new ArenaViewPreset("1 · Cenital", 0f, 12f, 25f, 34f),
+            new ArenaViewPreset("2 · 2.5D", 0f, 38f, 26f, 34f),
+            new ArenaViewPreset("3 · Diagonal", 34f, 44f, 27f, 36f),
+            new ArenaViewPreset("4 · Tribuna", 0f, 62f, 24f, 42f)
         };
 
         private static readonly string[] PresetLabelCache = BuildPresetLabels();
@@ -143,6 +149,16 @@ namespace ElementalLudo.Board
         private float blendProgress = 1f;
         private ArenaViewPreset blendStart;
 
+        private int hoveredDie = -1;
+
+        /// <summary>
+        /// Raised with the index of a die the player clicked to reroll. The
+        /// arena spots the click because it owns the camera the player is
+        /// looking through, but it never touches the hand itself — the
+        /// controller decides whether the reroll is legal.
+        /// </summary>
+        public System.Action<int> RerollRequested;
+
         /// <summary>Where the arena sits, well away from the board.</summary>
         private Vector3 Origin => new Vector3(ArenaDistance, 0f, 0f);
 
@@ -204,6 +220,7 @@ namespace ElementalLudo.Board
 
         public void Hide()
         {
+            ClearHover();
             session = null;
             LeaveArenaView();
             if (root != null)
@@ -222,6 +239,131 @@ namespace ElementalLudo.Board
             AdvanceViewBlend();
             SyncDice(false);
             AdvanceTumbles();
+
+            // After the sync, which rewrites every die's tint each frame and
+            // would otherwise wipe the highlight straight back off.
+            HandleDiceInput();
+        }
+
+        // ------------------------------------------------------------------
+        // Picking
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Lets the player reroll by clicking the die itself. Only their own
+        /// side is live, and only while they still have rerolls left — a die
+        /// that cannot be thrown again never lights up, so the highlight
+        /// doubles as the affordance.
+        /// </summary>
+        private void HandleDiceInput()
+        {
+            List<ArenaDie> side = ActiveHumanSide();
+            if (side == null)
+            {
+                ClearHover();
+                return;
+            }
+
+            int hit = FindDieUnderPointer(side);
+            SetHover(side, hit);
+
+            Mouse mouse = Mouse.current;
+            if (hit >= 0 &&
+                mouse != null &&
+                mouse.leftButton.wasPressedThisFrame)
+            {
+                RerollRequested?.Invoke(hit);
+            }
+        }
+
+        /// <summary>The dice the player may click right now, or null.</summary>
+        private List<ArenaDie> ActiveHumanSide()
+        {
+            if (session == null || arenaCamera == null || !session.IsHumanTurn)
+            {
+                return null;
+            }
+
+            LudoCombatHand hand = session.CurrentHand;
+            if (hand == null || !hand.CanReroll)
+            {
+                return null;
+            }
+
+            return session.Phase == LudoCombatPhase.AttackerTurn
+                ? attackerDice
+                : defenderDice;
+        }
+
+        private int FindDieUnderPointer(List<ArenaDie> side)
+        {
+            Mouse mouse = Mouse.current;
+            if (mouse == null)
+            {
+                return -1;
+            }
+
+            Ray ray = arenaCamera.ScreenPointToRay(mouse.position.ReadValue());
+            if (!Physics.Raycast(ray, out RaycastHit hit, 200f))
+            {
+                return -1;
+            }
+
+            for (int index = 0; index < side.Count; index++)
+            {
+                Transform dieRoot = side[index].Root;
+                if (dieRoot != null && hit.collider.transform.IsChildOf(dieRoot))
+                {
+                    return index;
+                }
+            }
+
+            return -1;
+        }
+
+        private void SetHover(List<ArenaDie> side, int index)
+        {
+            if (hoveredDie >= 0 && hoveredDie != index)
+            {
+                ClearHover();
+            }
+
+            hoveredDie = index;
+            if (index < 0 || index >= side.Count)
+            {
+                return;
+            }
+
+            ArenaDie die = side[index];
+            die.Root.position = die.BasePosition + Up * HoverLift;
+            die.Visual.SetAccentColor(
+                Color.Lerp(die.Tint, Color.white, 0.55f),
+                0.8f);
+        }
+
+        private void ClearHover()
+        {
+            if (hoveredDie < 0)
+            {
+                return;
+            }
+
+            // Cheaper than tracking which list it came from, and a die that is
+            // not lifted is unaffected by being put back down.
+            RestoreRestingPositions(attackerDice);
+            RestoreRestingPositions(defenderDice);
+            hoveredDie = -1;
+        }
+
+        private static void RestoreRestingPositions(List<ArenaDie> dice)
+        {
+            foreach (ArenaDie die in dice)
+            {
+                if (die.Root != null)
+                {
+                    die.Root.position = die.BasePosition;
+                }
+            }
         }
 
         private void OnDestroy()
@@ -482,8 +624,8 @@ namespace ElementalLudo.Board
 
                 int first = vertices.Count;
                 vertices.Add(new Vector3(0f, 0f, FloorDepth));
-                vertices.Add(EllipsePoint(a0, floorRadius, FloorDepth));
-                vertices.Add(EllipsePoint(a1, floorRadius, FloorDepth));
+                vertices.Add(RingPoint(a0, floorRadius, FloorDepth));
+                vertices.Add(RingPoint(a1, floorRadius, FloorDepth));
                 colors.Add(sandInner);
                 colors.Add(sandOuter);
                 colors.Add(sandOuter);
@@ -535,7 +677,12 @@ namespace ElementalLudo.Board
             }
 
             ArenaMeshBuilder builder = new ArenaMeshBuilder();
-            float wallHeight = floorRadius * 0.16f;
+
+            // Deliberately low. The camera looks down at the arena, so a tall
+            // wall on the far rim climbs the screen and lands on top of the
+            // piece standing in front of it — which is what was burying the
+            // rival.
+            float wallHeight = floorRadius * 0.11f;
             float wallTopZ = FloorDepth - wallHeight;
 
             BuildPodiumWall(builder, wallHeight);
@@ -553,7 +700,7 @@ namespace ElementalLudo.Board
 
                 // Centred on 90°, the far side of the oval.
                 float degrees = 90f - halfArc + columnArc * t;
-                Vector3 point = EllipsePoint(
+                Vector3 point = RingPoint(
                     degrees * Mathf.Deg2Rad,
                     ringRadius,
                     0f);
@@ -578,15 +725,20 @@ namespace ElementalLudo.Board
             MeshRenderer stoneRenderer = stoneObject.AddComponent<MeshRenderer>();
             ConfigureRenderer(stoneRenderer);
 
-            Shader celShader = Shader.Find(StoneShaderName);
-            if (celShader != null)
+            Shader celShader = Shader.Find(FloorShaderName);
+            if (celShader == null)
+            {
+                Debug.LogError(
+                    $"CombatArena: shader '{FloorShaderName}' not found.",
+                    this);
+            }
+            else
             {
                 stoneMaterial = new Material(celShader)
                 {
                     name = "Arena Stone",
                     hideFlags = HideFlags.DontSave
                 };
-                stoneMaterial.SetColor(BaseColorId, Color.white);
                 stoneRenderer.sharedMaterial = stoneMaterial;
             }
 
@@ -646,10 +798,10 @@ namespace ElementalLudo.Board
                 float a0 = Mathf.PI * 2f * segment / segments;
                 float a1 = Mathf.PI * 2f * (segment + 1) / segments;
 
-                Vector3 low0 = EllipsePoint(a0, floorRadius, FloorDepth);
-                Vector3 low1 = EllipsePoint(a1, floorRadius, FloorDepth);
-                Vector3 high0 = EllipsePoint(a0, outerRadius, topZ);
-                Vector3 high1 = EllipsePoint(a1, outerRadius, topZ);
+                Vector3 low0 = RingPoint(a0, floorRadius, FloorDepth);
+                Vector3 low1 = RingPoint(a1, floorRadius, FloorDepth);
+                Vector3 high0 = RingPoint(a0, outerRadius, topZ);
+                Vector3 high1 = RingPoint(a1, outerRadius, topZ);
 
                 // Facing inward, toward the fight.
                 Vector3 n0 = new Vector3(-Mathf.Cos(a0), -Mathf.Sin(a0), 0f);
@@ -790,11 +942,11 @@ namespace ElementalLudo.Board
             meshRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
         }
 
-        private Vector3 EllipsePoint(float angle, float radius, float depth)
+        private static Vector3 RingPoint(float angle, float radius, float depth)
         {
             return new Vector3(
                 Mathf.Cos(angle) * radius,
-                Mathf.Sin(angle) * radius * FloorSquash,
+                Mathf.Sin(angle) * radius,
                 depth);
         }
 
@@ -815,10 +967,11 @@ namespace ElementalLudo.Board
                     continue;
                 }
 
-                dice[index].Root.position = Origin + new Vector3(
+                dice[index].BasePosition = Origin + new Vector3(
                     index * diceSpacing - span * 0.5f,
                     rowY,
                     0f);
+                dice[index].Root.position = dice[index].BasePosition;
             }
         }
 
@@ -846,6 +999,12 @@ namespace ElementalLudo.Board
             // pair its mesh expects: body first, pips second.
             visualObject.GetComponent<MeshRenderer>().sharedMaterials =
                 new[] { GetDiceBodyMaterial(), GetDicePipMaterial() };
+
+            // What makes the die clickable. The mesh is built around the
+            // visual's own origin, so a plain cube of the same size lines up
+            // without any offset, and it travels with the tumble animation.
+            BoxCollider dieCollider = visualObject.AddComponent<BoxCollider>();
+            dieCollider.size = Vector3.one * (DiceVisual.HalfSize * 2f);
 
             return new ArenaDie
             {
@@ -1033,6 +1192,7 @@ namespace ElementalLudo.Board
             for (int index = 0; index < values.Count && index < dice.Count; index++)
             {
                 ArenaDie die = dice[index];
+                die.Tint = tint;
                 die.Visual.SetAccentColor(tint, 0.35f);
 
                 if (die.Value == values[index])
@@ -1318,6 +1478,12 @@ namespace ElementalLudo.Board
             public float Timer;
             public Quaternion StartRotation;
             public Vector3 Axis;
+
+            /// <summary>Where it sits when nothing is hovering it.</summary>
+            public Vector3 BasePosition;
+
+            /// <summary>Owner's colour, kept so the highlight can brighten it.</summary>
+            public Color Tint;
         }
     }
 }

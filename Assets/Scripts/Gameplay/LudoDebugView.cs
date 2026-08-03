@@ -407,9 +407,11 @@ namespace ElementalLudo.Gameplay
         }
 
         /// <summary>
-        /// Reroll controls for the human. The dice are numbered rather than
-        /// redrawn, since the real ones are on screen in front of the player;
-        /// the numbers just map left to right onto them.
+        /// Reroll controls for the human. Rerolling is done by clicking the die
+        /// itself out in the arena, which is why there are no numbered buttons
+        /// here any more — the dice are already on screen in front of the
+        /// player, and pointing at the one you mean beats matching it to a
+        /// list. All that is left is the running total and a way to stop.
         /// </summary>
         private void DrawCombatControls(LudoCombatSession session)
         {
@@ -422,32 +424,15 @@ namespace ElementalLudo.Gameplay
             LudoCombatHand hand = session.CurrentHand;
             GUILayout.Label(
                 hand.CanReroll
-                    ? $"Tu turno — relanzamientos restantes: {hand.RerollsLeft}"
+                    ? $"Tu turno — haz clic en un dado para relanzarlo " +
+                      $"({hand.RerollsLeft} restantes)"
                     : "Tu turno — sin relanzamientos",
                 statusStyle);
 
-            GUILayout.BeginHorizontal();
-            for (int index = 0; index < hand.Dice.Count; index++)
-            {
-                GUI.enabled = hand.CanReroll;
-                if (GUILayout.Button(
-                        $"{index + 1}º: {hand.Dice[index]}",
-                        actionCardStyle,
-                        GUILayout.Width(74f)))
-                {
-                    controller.RequestCombatReroll(index);
-                }
-
-                GUI.enabled = true;
-            }
-
-            GUILayout.Space(12f);
             if (GUILayout.Button("Plantarse", primaryButtonStyle, GUILayout.Width(140f)))
             {
                 controller.ConfirmCombatHand();
             }
-
-            GUILayout.EndHorizontal();
         }
 
 

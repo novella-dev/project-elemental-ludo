@@ -221,23 +221,25 @@ namespace ElementalLudo.Gameplay
 
         private void EnsureCombatArena()
         {
-            if (combatArena != null)
+            if (combatArena == null)
             {
-                return;
+                combatArena = FindFirstObjectByType<LudoCombatArena>();
             }
 
-            combatArena = FindFirstObjectByType<LudoCombatArena>();
-            if (combatArena != null)
+            if (combatArena == null)
             {
-                return;
+                GameObject arenaObject = new GameObject("CombatArena")
+                {
+                    hideFlags = HideFlags.DontSave
+                };
+                arenaObject.transform.SetParent(transform, false);
+                combatArena = arenaObject.AddComponent<LudoCombatArena>();
             }
 
-            GameObject arenaObject = new GameObject("CombatArena")
-            {
-                hideFlags = HideFlags.DontSave
-            };
-            arenaObject.transform.SetParent(transform, false);
-            combatArena = arenaObject.AddComponent<LudoCombatArena>();
+            // Re-pointed on every duel rather than only on creation: the arena
+            // outlives a match, and a delegate lost to a domain reload would
+            // leave the dice looking clickable but inert.
+            combatArena.RerollRequested = index => RequestCombatReroll(index);
         }
 
         private void EnsureTokenGroundMarkers()
