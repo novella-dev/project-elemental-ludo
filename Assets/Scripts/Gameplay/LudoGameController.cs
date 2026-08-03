@@ -52,6 +52,8 @@ namespace ElementalLudo.Gameplay
             new Dictionary<Token, Vector3>(16);
         private readonly List<string> moveHistory = new List<string>(MaxMoveHistoryEntries);
         private readonly List<Token> trackTokenBuffer = new List<Token>(16);
+        private readonly List<LudoHighlightCell> highlightBuffer =
+            new List<LudoHighlightCell>(4);
 
         // One controller per seat, indexed alongside `players`. Hot-seat
         // points every entry at the same human controller.
@@ -72,6 +74,9 @@ namespace ElementalLudo.Gameplay
         private bool captureHappenedThisTurn;
         private int consecutiveSixes;
         private Token lastMovedToken;
+
+        /// <summary>Token the active seat is pointing at, before committing.</summary>
+        private Token selectedToken;
         private PlayerStyle winner;
         private string statusMessage = string.Empty;
         private LudoTurnPhase phase = LudoTurnPhase.AwaitingRoll;
@@ -374,9 +379,12 @@ namespace ElementalLudo.Gameplay
                 IPlayerController source = controller;
                 Action roll = () => HandleRollRequested(source);
                 Action<Token> select = token => HandleTokenSelected(source, token);
+                Action<Token> pointAt = token => HandleSelectionChanged(source, token);
                 controller.RollRequested += roll;
                 controller.TokenSelected += select;
-                subscriptions.Add(new ControllerSubscription(controller, roll, select));
+                controller.SelectionChanged += pointAt;
+                subscriptions.Add(
+                    new ControllerSubscription(controller, roll, select, pointAt));
             }
         }
 
@@ -399,6 +407,7 @@ namespace ElementalLudo.Gameplay
             {
                 subscription.Controller.RollRequested -= subscription.Roll;
                 subscription.Controller.TokenSelected -= subscription.Select;
+                subscription.Controller.SelectionChanged -= subscription.PointAt;
             }
 
             subscriptions.Clear();
@@ -421,6 +430,25 @@ namespace ElementalLudo.Gameplay
             if (source == ActiveController && phase == LudoTurnPhase.AwaitingAction)
             {
                 TrySelectToken(token);
+            }
+        }
+
+        /// <summary>
+        /// A controller is pointing at a move without committing yet. Purely
+        /// presentation: light its destination up and dim the alternatives.
+        /// </summary>
+        private void HandleSelectionChanged(IPlayerController source, Token token)
+        {
+            if (source != ActiveController)
+            {
+                return;
+            }
+
+            selectedToken = token;
+            if (phase == LudoTurnPhase.AwaitingAction)
+            {
+                HighlightReachableCells();
+                SetTokenInteractionStates(true);
             }
         }
 
@@ -489,6 +517,7 @@ namespace ElementalLudo.Gameplay
             captureHappenedThisTurn = false;
             consecutiveSixes = 0;
             lastMovedToken = null;
+            selectedToken = null;
             winner = null;
             legalActions.Clear();
             moveHistory.Clear();
@@ -685,21 +714,40 @@ namespace ElementalLudo.Gameplay
             }
 
             LudoPlayerState player = players[activePlayerIndex];
-            HashSet<Vector2Int> reachableCells = new HashSet<Vector2Int>();
+            Color baseColor = Color.Lerp(ActivePlayer.TokenColor, Color.white, 0.35f);
+            bool hasSelection = selectedToken != null;
+
+            highlightBuffer.Clear();
             foreach (LudoLegalAction action in legalActions)
             {
-                Vector2Int cell = action.Type == LudoActionType.LeaveHome
-                    ? player.Route[0]
-                    : player.Route[action.DestinationRouteIndex];
-                reachableCells.Add(cell);
+                int routeIndex = action.Type == LudoActionType.LeaveHome
+                    ? 0
+                    : action.DestinationRouteIndex;
+
+                Color color;
+                if (!hasSelection)
+                {
+                    // Nothing picked yet: every option reads the same.
+                    color = baseColor;
+                    color.a = 0.8f;
+                }
+                else if (action.Token == selectedToken)
+                {
+                    color = Color.Lerp(baseColor, Color.white, 0.25f);
+                    color.a = 0.92f;
+                }
+                else
+                {
+                    // Still available, just not the one being pointed at.
+                    color = Color.Lerp(baseColor, Color.gray, 0.45f);
+                    color.a = 0.3f;
+                }
+
+                highlightBuffer.Add(
+                    new LudoHighlightCell(player.Route[routeIndex], color));
             }
 
-            Color highlightColor = Color.Lerp(
-                ActivePlayer.TokenColor,
-                Color.white,
-                0.35f);
-            highlightColor.a = 0.8f;
-            reachableCellsHighlighter.SetCells(reachableCells, highlightColor);
+            reachableCellsHighlighter.SetCells(highlightBuffer);
         }
 
         /// <summary>Tints the die with whoever is about to roll it.</summary>
@@ -739,6 +787,7 @@ namespace ElementalLudo.Gameplay
             }
 
             actionPerformed = true;
+            selectedToken = null;
             phase = LudoTurnPhase.Resolving;
             SetTokenInteractionStates(false);
             StartCoroutine(ExecuteAction(legalAction));
@@ -913,6 +962,7 @@ namespace ElementalLudo.Gameplay
             rolledValue = 0;
             actionPerformed = false;
             captureHappenedThisTurn = false;
+            selectedToken = null;
 
             if (bonusTurn)
             {
@@ -1151,7 +1201,9 @@ namespace ElementalLudo.Gameplay
                         {
                             if (action.Token == token)
                             {
-                                state = TokenInteractionState.Selectable;
+                                state = token == selectedToken
+                                    ? TokenInteractionState.Selected
+                                    : TokenInteractionState.Selectable;
                                 break;
                             }
                         }
@@ -1181,15 +1233,18 @@ namespace ElementalLudo.Gameplay
             public IPlayerController Controller { get; }
             public Action Roll { get; }
             public Action<Token> Select { get; }
+            public Action<Token> PointAt { get; }
 
             public ControllerSubscription(
                 IPlayerController controller,
                 Action roll,
-                Action<Token> select)
+                Action<Token> select,
+                Action<Token> pointAt)
             {
                 Controller = controller;
                 Roll = roll;
                 Select = select;
+                PointAt = pointAt;
             }
         }
 

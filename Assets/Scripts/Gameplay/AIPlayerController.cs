@@ -47,6 +47,11 @@ namespace ElementalLudo.Gameplay
         public event Action RollRequested;
         public event Action<Token> TokenSelected;
 
+        // The AI commits in one step, so it never points at a move first.
+#pragma warning disable 67
+        public event Action<Token> SelectionChanged;
+#pragma warning restore 67
+
         public LudoAIDifficulty Difficulty
         {
             get => difficulty;

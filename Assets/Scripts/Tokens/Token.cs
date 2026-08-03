@@ -12,7 +12,13 @@ namespace ElementalLudo.Tokens
     public enum TokenInteractionState
     {
         Normal,
+
+        /// <summary>Could be moved this turn.</summary>
         Selectable,
+
+        /// <summary>Picked by the player and awaiting confirmation.</summary>
+        Selected,
+
         Disabled
     }
 

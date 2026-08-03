@@ -3,6 +3,19 @@ using UnityEngine;
 
 namespace ElementalLudo.Board
 {
+    /// <summary>A square to highlight, with the colour it should take.</summary>
+    public readonly struct LudoHighlightCell
+    {
+        public Vector2Int Cell { get; }
+        public Color Color { get; }
+
+        public LudoHighlightCell(Vector2Int cell, Color color)
+        {
+            Cell = cell;
+            Color = color;
+        }
+    }
+
     [DisallowMultipleComponent]
     [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
     public sealed class LudoReachableCellsHighlighter : MonoBehaviour
@@ -30,16 +43,22 @@ namespace ElementalLudo.Board
             }
         }
 
-        public void SetCells(IEnumerable<Vector2Int> cells, Color color)
+        /// <summary>
+        /// Colour is per square rather than shared, so a picked destination
+        /// can stand out from the alternatives still on offer.
+        /// </summary>
+        public void SetCells(IReadOnlyList<LudoHighlightCell> cells)
         {
             vertices.Clear();
             triangles.Clear();
             colors.Clear();
 
-            HashSet<Vector2Int> uniqueCells = new HashSet<Vector2Int>(cells);
-            foreach (Vector2Int cell in uniqueCells)
+            if (cells != null)
             {
-                AddCell(cell, color);
+                foreach (LudoHighlightCell entry in cells)
+                {
+                    AddCell(entry.Cell, entry.Color);
+                }
             }
 
             EnsureMesh();

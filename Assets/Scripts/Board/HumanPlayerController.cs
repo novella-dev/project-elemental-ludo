@@ -27,8 +27,11 @@ namespace ElementalLudo.Board
         private LudoPlayerState pendingPlayer;
         private IReadOnlyList<LudoPlayerState> pendingAllPlayers;
 
+        private Token selectedToken;
+
         public event Action RollRequested;
         public event Action<Token> TokenSelected;
+        public event Action<Token> SelectionChanged;
 
         private void Awake()
         {
@@ -101,6 +104,7 @@ namespace ElementalLudo.Board
             pendingBoard = context.Board;
             pendingPlayer = context.Player;
             pendingAllPlayers = context.AllPlayers;
+            SetSelection(null);
         }
 
         public void CancelTurn()
@@ -109,6 +113,7 @@ namespace ElementalLudo.Board
             pendingBoard = null;
             pendingPlayer = null;
             pendingAllPlayers = null;
+            SetSelection(null);
         }
 
         private void HandleRollRequested()
@@ -123,14 +128,20 @@ namespace ElementalLudo.Board
 
         private void HandleTokenClicked(Token token)
         {
-            // Its own movable token: the click plainly means "move this one".
-            foreach (LudoLegalAction action in pendingActions)
+            // Its own movable token: point at it so its destination lights up,
+            // and only commit if it was already the one being pointed at.
+            if (HasActionFor(token))
             {
-                if (action.Token == token)
+                if (selectedToken == token)
                 {
-                    TokenSelected?.Invoke(token);
-                    return;
+                    Commit(token);
                 }
+                else
+                {
+                    SetSelection(token);
+                }
+
+                return;
             }
 
             // Otherwise the player was most likely aiming at the square the
@@ -140,7 +151,7 @@ namespace ElementalLudo.Board
             if (TryGetTokenCell(token, out Vector2Int occupiedCell) &&
                 TryFindMoverForCell(occupiedCell, out Token mover))
             {
-                TokenSelected?.Invoke(mover);
+                Commit(mover);
                 return;
             }
 
@@ -149,12 +160,46 @@ namespace ElementalLudo.Board
             TokenSelected?.Invoke(token);
         }
 
+        /// <summary>
+        /// Clicking a destination is the commit gesture: it names exactly one
+        /// move, whether or not that token was the one being pointed at.
+        /// </summary>
         private void HandleCellClicked(Vector2Int cell)
         {
             if (TryFindMoverForCell(cell, out Token mover))
             {
-                TokenSelected?.Invoke(mover);
+                Commit(mover);
             }
+        }
+
+        private void Commit(Token token)
+        {
+            SetSelection(null);
+            TokenSelected?.Invoke(token);
+        }
+
+        private void SetSelection(Token token)
+        {
+            if (selectedToken == token)
+            {
+                return;
+            }
+
+            selectedToken = token;
+            SelectionChanged?.Invoke(token);
+        }
+
+        private bool HasActionFor(Token token)
+        {
+            foreach (LudoLegalAction action in pendingActions)
+            {
+                if (action.Token == token)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>Which of this turn's tokens, if any, would land on <paramref name="cell"/>.</summary>

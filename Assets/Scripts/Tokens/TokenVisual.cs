@@ -799,6 +799,8 @@ namespace ElementalLudo.Tokens
             targetRenderer.GetPropertyBlock(propertyBlock, materialIndex);
             Color displayColor = interactionState switch
             {
+                TokenInteractionState.Selected =>
+                    Color.Lerp(baseColor, Color.white, 0.55f),
                 TokenInteractionState.Selectable =>
                     Color.Lerp(baseColor, Color.white, 0.32f),
                 TokenInteractionState.Disabled =>
@@ -808,10 +810,15 @@ namespace ElementalLudo.Tokens
             propertyBlock.SetColor(BaseColorId, displayColor);
             propertyBlock.SetColor(ColorId, displayColor);
             propertyBlock.SetColor(GltfBaseColorId, displayColor);
-            Color displayEmission = interactionState ==
-                TokenInteractionState.Disabled
-                ? emissionColor * 0.15f
-                : emissionColor;
+            Color displayEmission = interactionState switch
+            {
+                // The baseColor term matters: some styles ship no emission at
+                // all (red is pure black), and those still have to glow.
+                TokenInteractionState.Selected =>
+                    emissionColor * 2.2f + baseColor * 0.45f,
+                TokenInteractionState.Disabled => emissionColor * 0.15f,
+                _ => emissionColor
+            };
             propertyBlock.SetColor(
                 GltfEmissiveFactorId,
                 displayEmission);

@@ -19,6 +19,14 @@ namespace ElementalLudo.Gameplay
         event Action RollRequested;
         event Action<Token> TokenSelected;
 
+        /// <summary>
+        /// The token this controller is currently pointing at, before
+        /// committing to it, or null for none. Purely a presentation hint so
+        /// the board can show what is about to happen; a controller that
+        /// decides in one step never needs to raise it.
+        /// </summary>
+        event Action<Token> SelectionChanged;
+
         /// <summary>The game is waiting for this player to roll the die.</summary>
         void BeginRollTurn(LudoTurnContext context);
 
