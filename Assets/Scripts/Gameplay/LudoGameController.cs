@@ -28,6 +28,7 @@ namespace ElementalLudo.Gameplay
         [SerializeField] private LudoReachableCellsHighlighter reachableCellsHighlighter;
         [SerializeField] private LudoTokenGroundMarkers tokenGroundMarkers;
         [SerializeField] private LudoBoardPresenter boardPresenter;
+        [SerializeField] private LudoCombatArena combatArena;
 
         [Header("Mode")]
         [Tooltip("Offered as the default when the start menu opens. The menu is what actually decides the match.")]
@@ -200,6 +201,27 @@ namespace ElementalLudo.Gameplay
             boardPresenter = presenterObject.AddComponent<LudoBoardPresenter>();
         }
 
+        private void EnsureCombatArena()
+        {
+            if (combatArena != null)
+            {
+                return;
+            }
+
+            combatArena = FindFirstObjectByType<LudoCombatArena>();
+            if (combatArena != null)
+            {
+                return;
+            }
+
+            GameObject arenaObject = new GameObject("CombatArena")
+            {
+                hideFlags = HideFlags.DontSave
+            };
+            arenaObject.transform.SetParent(transform, false);
+            combatArena = arenaObject.AddComponent<LudoCombatArena>();
+        }
+
         private void EnsureTokenGroundMarkers()
         {
             if (tokenGroundMarkers != null)
@@ -317,6 +339,7 @@ namespace ElementalLudo.Gameplay
             StopAllCoroutines();
             dice.CancelRoll();
             CancelPendingDecisions();
+            AbortCombat();
 
             awaitingSetup = true;
             phase = LudoTurnPhase.AwaitingRoll;
@@ -606,6 +629,7 @@ namespace ElementalLudo.Gameplay
             // the freshly restarted game.
             dice.CancelRoll();
             CancelPendingDecisions();
+            AbortCombat();
 
             foreach (LudoPlayerState player in players)
             {
@@ -1464,6 +1488,8 @@ namespace ElementalLudo.Gameplay
 
             combatVisible = true;
             statusMessage = "¡Duelo de dados!";
+            EnsureCombatArena();
+            combatArena.Show(combatSession);
 
             while (combatSession.Phase != LudoCombatPhase.Resolved)
             {
@@ -1497,8 +1523,26 @@ namespace ElementalLudo.Gameplay
             combatReport = combatSession.BuildReport();
             yield return new WaitForSecondsRealtime(combatDisplayDuration);
 
+            combatArena.Hide();
             combatVisible = false;
             combatSession = null;
+        }
+
+        /// <summary>
+        /// Tears the duel down without finishing it. StopAllCoroutines kills
+        /// PlayDuel wherever it stands, so restarting or quitting mid-duel
+        /// would otherwise leave the arena camera live and the board's parked.
+        /// </summary>
+        private void AbortCombat()
+        {
+            if (combatArena != null)
+            {
+                combatArena.Hide();
+            }
+
+            combatSession = null;
+            combatVisible = false;
+            combatTurnConfirmed = false;
         }
 
         /// <summary>Called by the UI to spend one of the player's rerolls.</summary>
