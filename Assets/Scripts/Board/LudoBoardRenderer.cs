@@ -15,6 +15,7 @@ namespace ElementalLudo.Board
         private const int CellLabelCount = 68;
         private const int CellLabelStartIndex = LudoBoardRoutes.CellLabelStartIndex;
 
+        private static readonly Color BoardWhite = new Color32(248, 247, 242, 255);
         private static readonly Color GridColor = new Color32(73, 78, 78, 255);
         private static readonly Color Red = new Color32(211, 17, 54, 255);
         private static readonly Color Blue = new Color32(62, 158, 207, 255);
@@ -27,6 +28,21 @@ namespace ElementalLudo.Board
         private readonly List<int> triangles = new List<int>(12288);
 
         private readonly List<GameObject> cellLabels = new List<GameObject>(CellLabelCount);
+
+        [Tooltip("Classic look: plain board with colour discs in the corners, instead of the sand surface and elemental biome plates.")]
+        [SerializeField] private bool classicBoard;
+
+        /// <summary>Switches between the classic board and the elemental one.</summary>
+        public void SetClassicBoard(bool value)
+        {
+            if (classicBoard == value)
+            {
+                return;
+            }
+
+            classicBoard = value;
+            Rebuild();
+        }
 
         private Mesh boardMesh;
         private Material fallbackMaterial;
@@ -254,7 +270,14 @@ namespace ElementalLudo.Board
             const float lineWidth = 0.025f;
 
             AddRect(-9.68f, -9.68f, 9.68f, 9.68f, GridColor, 0.08f);
-            DrawSandSurface(-outerEdge, -outerEdge, outerEdge, outerEdge, 0.06f);
+            if (classicBoard)
+            {
+                AddRect(-outerEdge, -outerEdge, outerEdge, outerEdge, BoardWhite, 0.06f);
+            }
+            else
+            {
+                DrawSandSurface(-outerEdge, -outerEdge, outerEdge, outerEdge, 0.06f);
+            }
 
             // Finishing lanes.
             AddRect(-0.5f, centerEdge, 0.5f, 8.5f, Red, 0.02f);
@@ -272,8 +295,16 @@ namespace ElementalLudo.Board
             DrawCenter(lineWidth);
             DrawSafeCells();
 
-            // Home corners are drawn by LudoBoardTerrainRenderer now, as
-            // elemental biome plates instead of flat colored discs.
+            // Outside Classic the corners belong to LudoBoardTerrainRenderer,
+            // which draws elemental biome plates over this area instead.
+            if (classicBoard)
+            {
+                float homeCenter = LudoBoardLayout.HomeLogicalCenter;
+                DrawHome(new Vector2(-homeCenter, homeCenter), Red);
+                DrawHome(new Vector2(homeCenter, homeCenter), Blue);
+                DrawHome(new Vector2(-homeCenter, -homeCenter), Green);
+                DrawHome(new Vector2(homeCenter, -homeCenter), Yellow);
+            }
 
             AddLine(
                 new Vector2(-outerEdge, -outerEdge),
@@ -432,6 +463,62 @@ namespace ElementalLudo.Board
                 0.275f,
                 new Color(GridColor.r, GridColor.g, GridColor.b, 0.32f),
                 -0.06f);
+        }
+
+        private void DrawHome(Vector2 center, Color homeColor)
+        {
+            float scale = LudoBoardLayout.HomeSizeScale;
+            AddCircle(center, 2.04f * scale, GridColor, 0.015f);
+            AddCircle(center, 1.98f * scale, homeColor, 0.005f);
+            AddRing(center, 1.24f * scale, 1.17f * scale, BoardWhite, -0.015f);
+            AddCircle(center, 0.62f * scale, GridColor, -0.02f);
+            AddCircle(center, 0.55f * scale, BoardWhite, -0.03f);
+        }
+
+        private void AddCircle(Vector2 center, float radius, Color color, float depth)
+        {
+            for (int segment = 0; segment < CircleSegments; segment++)
+            {
+                float startAngle = Mathf.PI * 2f * segment / CircleSegments;
+                float endAngle = Mathf.PI * 2f * (segment + 1) / CircleSegments;
+
+                AddTriangle(
+                    center,
+                    center + new Vector2(Mathf.Cos(startAngle), Mathf.Sin(startAngle)) * radius,
+                    center + new Vector2(Mathf.Cos(endAngle), Mathf.Sin(endAngle)) * radius,
+                    color,
+                    depth);
+            }
+        }
+
+        private void AddRing(
+            Vector2 center,
+            float outerRadius,
+            float innerRadius,
+            Color color,
+            float depth)
+        {
+            for (int segment = 0; segment < CircleSegments; segment++)
+            {
+                float startAngle = Mathf.PI * 2f * segment / CircleSegments;
+                float endAngle = Mathf.PI * 2f * (segment + 1) / CircleSegments;
+                Vector2 startDirection = new Vector2(Mathf.Cos(startAngle), Mathf.Sin(startAngle));
+                Vector2 endDirection = new Vector2(Mathf.Cos(endAngle), Mathf.Sin(endAngle));
+
+                int firstVertex = vertices.Count;
+                vertices.Add(ToVector3(center + startDirection * innerRadius, depth));
+                vertices.Add(ToVector3(center + startDirection * outerRadius, depth));
+                vertices.Add(ToVector3(center + endDirection * outerRadius, depth));
+                vertices.Add(ToVector3(center + endDirection * innerRadius, depth));
+                AddColors(color, 4);
+
+                triangles.Add(firstVertex);
+                triangles.Add(firstVertex + 2);
+                triangles.Add(firstVertex + 1);
+                triangles.Add(firstVertex);
+                triangles.Add(firstVertex + 3);
+                triangles.Add(firstVertex + 2);
+            }
         }
 
         private static Color Lighten(Color color)

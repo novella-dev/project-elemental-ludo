@@ -27,6 +27,7 @@ namespace ElementalLudo.Gameplay
         [SerializeField] private MonoBehaviour aiControllerSource;
         [SerializeField] private LudoReachableCellsHighlighter reachableCellsHighlighter;
         [SerializeField] private LudoTokenGroundMarkers tokenGroundMarkers;
+        [SerializeField] private LudoBoardPresenter boardPresenter;
 
         [Header("Mode")]
         [Tooltip("Offered as the default when the start menu opens. The menu is what actually decides the match.")]
@@ -257,6 +258,16 @@ namespace ElementalLudo.Gameplay
 
             settings = matchSettings;
             elementalModeEnabled = matchSettings.ElementalRules;
+
+            if (boardPresenter == null)
+            {
+                boardPresenter = FindFirstObjectByType<LudoBoardPresenter>();
+            }
+
+            if (boardPresenter != null)
+            {
+                boardPresenter.Apply(matchSettings.UsesClassicBoard);
+            }
 
             if (matchSettings.HasAIOpponents)
             {
