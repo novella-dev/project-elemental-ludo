@@ -8,7 +8,8 @@ namespace ElementalLudo.Gameplay
     {
         public const int SharedPathLength = 68;
         public const int PlayerMainPathLength = 64;
-        public const int RouteLength = 70;
+        public const int FinalLaneLength = 7;
+        public const int RouteLength = PlayerMainPathLength + FinalLaneLength + 1;
         public const int MaxTokensPerCell = 2;
 
         private static readonly HashSet<Vector2Int> SafeCells =
@@ -111,7 +112,9 @@ namespace ElementalLudo.Gameplay
                         new Vector2Int(0, 7),
                         new Vector2Int(0, 6),
                         new Vector2Int(0, 5),
-                        new Vector2Int(0, 4))
+                        new Vector2Int(0, 4),
+                        new Vector2Int(0, 3),
+                        new Vector2Int(0, 2))
                 },
                 {
                     "blue",
@@ -121,7 +124,9 @@ namespace ElementalLudo.Gameplay
                         new Vector2Int(7, 0),
                         new Vector2Int(6, 0),
                         new Vector2Int(5, 0),
-                        new Vector2Int(4, 0))
+                        new Vector2Int(4, 0),
+                        new Vector2Int(3, 0),
+                        new Vector2Int(2, 0))
                 },
                 {
                     "yellow",
@@ -131,7 +136,9 @@ namespace ElementalLudo.Gameplay
                         new Vector2Int(0, -7),
                         new Vector2Int(0, -6),
                         new Vector2Int(0, -5),
-                        new Vector2Int(0, -4))
+                        new Vector2Int(0, -4),
+                        new Vector2Int(0, -3),
+                        new Vector2Int(0, -2))
                 },
                 {
                     "green",
@@ -141,7 +148,9 @@ namespace ElementalLudo.Gameplay
                         new Vector2Int(-7, 0),
                         new Vector2Int(-6, 0),
                         new Vector2Int(-5, 0),
-                        new Vector2Int(-4, 0))
+                        new Vector2Int(-4, 0),
+                        new Vector2Int(-3, 0),
+                        new Vector2Int(-2, 0))
                 }
             };
 
@@ -218,6 +227,13 @@ namespace ElementalLudo.Gameplay
             int startOffset,
             params Vector2Int[] finalLane)
         {
+            if (finalLane == null || finalLane.Length != FinalLaneLength)
+            {
+                throw new ArgumentException(
+                    $"A Ludo route must contain exactly {FinalLaneLength} final-lane cells.",
+                    nameof(finalLane));
+            }
+
             Vector2Int[] route = new Vector2Int[RouteLength];
             for (int index = 0; index < PlayerMainPathLength; index++)
             {
