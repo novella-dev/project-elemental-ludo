@@ -42,6 +42,7 @@ namespace ElementalLudo.Gameplay
         [SerializeField] private float movementStepDuration = 0.11f;
 
         private const int MaxMoveHistoryEntries = 30;
+        private const float SharedCellOffsetMagnitude = 0.55f;
 
         private readonly List<LudoPlayerState> players = new List<LudoPlayerState>(4);
         private readonly List<LudoLegalAction> legalActions =
@@ -756,7 +757,7 @@ namespace ElementalLudo.Gameplay
                     GetRoutePosition(player, token, 0));
                 boardState.SetTrack(token, 0);
                 CaptureOpponentTokensOnCell(player, token);
-                RepositionSameColorTokens(player);
+                RepositionTrackTokens();
                 statusMessage = $"{token.name} entered the starting square.";
                 LogMove(
                     $"Token {SpanishColorName(token.OwnerStyle.PlayerId)} {token.TokenId} " +
@@ -777,7 +778,7 @@ namespace ElementalLudo.Gameplay
                 }
 
                 CaptureOpponentTokensOnCell(player, token);
-                RepositionSameColorTokens(player);
+                RepositionTrackTokens();
 
                 if (action.DestinationRouteIndex == player.Route.Length - 1)
                 {
@@ -847,14 +848,10 @@ namespace ElementalLudo.Gameplay
                 lastMovedToken.transform.position = homePositions[lastMovedToken];
                 lastMovedToken.SetInteractionState(TokenInteractionState.Normal);
 
-                foreach (LudoPlayerState player in players)
-                {
-                    if (player.Style == lastMovedToken.OwnerStyle)
-                    {
-                        RepositionSameColorTokens(player);
-                        break;
-                    }
-                }
+                // The owner lookup this used to do is unnecessary now: pulling
+                // a token off the board can re-centre a rival that was sharing
+                // its square, so everyone gets re-seated.
+                RepositionTrackTokens();
 
                 statusMessage = "Three sixes in a row! Last moved token returns home.";
             }
@@ -954,25 +951,38 @@ namespace ElementalLudo.Gameplay
             }
             else
             {
-                position += GetSameColorCellOffset(player, token, routeIndex, cell);
+                position += GetSharedCellOffset(token, cell);
             }
 
             return position;
         }
 
-        private Vector3 GetSameColorCellOffset(
-            LudoPlayerState player,
-            Token token,
-            int routeIndex,
-            Vector2Int cell)
+        /// <summary>
+        /// Spreads every token sharing <paramref name="cell"/> so they don't
+        /// stack. Counts across all players, not just one: on a safe cell two
+        /// different colours can sit together without capturing, and comparing
+        /// route indices would never spot that, since each colour numbers the
+        /// same square differently.
+        ///
+        /// Every token on the cell walks the same ordered list, so each one
+        /// works out the same layout and claims a different slot.
+        /// </summary>
+        private Vector3 GetSharedCellOffset(Token token, Vector2Int cell)
         {
             int count = 0;
             int tokenIndex = -1;
-            foreach (Token t in player.Tokens)
+
+            foreach (LudoPlayerState occupant in players)
             {
-                if (boardState.GetState(t) == TokenState.Track && boardState.GetRouteIndex(t) == routeIndex)
+                foreach (Token other in occupant.Tokens)
                 {
-                    if (t == token)
+                    if (boardState.GetState(other) != TokenState.Track ||
+                        occupant.Route[boardState.GetRouteIndex(other)] != cell)
+                    {
+                        continue;
+                    }
+
+                    if (other == token)
                     {
                         tokenIndex = count;
                     }
@@ -981,14 +991,16 @@ namespace ElementalLudo.Gameplay
                 }
             }
 
-            if (count <= 1)
+            // tokenIndex < 0 happens mid-walk, before the board state catches
+            // up with the animation: stay centred until it settles.
+            if (count <= 1 || tokenIndex < 0)
             {
                 return Vector3.zero;
             }
 
-            float offsetMagnitude = 0.55f;
-            float baseOffset = (tokenIndex - (count - 1) * 0.5f) * offsetMagnitude;
+            float baseOffset = (tokenIndex - (count - 1) * 0.5f) * SharedCellOffsetMagnitude;
 
+            // Spread across the track, not along it.
             if (Mathf.Abs(cell.x) > Mathf.Abs(cell.y))
             {
                 return new Vector3(0f, baseOffset, 0f);
@@ -1039,15 +1051,23 @@ namespace ElementalLudo.Gameplay
             }
         }
 
-        private void RepositionSameColorTokens(LudoPlayerState player)
+        /// <summary>
+        /// Re-seats every token on the track. Has to cover all players, not
+        /// just the one that moved: arriving on an occupied square shifts
+        /// whoever was already standing there, and leaving one re-centres
+        /// whoever stays behind.
+        /// </summary>
+        private void RepositionTrackTokens()
         {
-            foreach (Token token in player.Tokens)
+            foreach (LudoPlayerState player in players)
             {
-                if (boardState.GetState(token) == TokenState.Track)
+                foreach (Token token in player.Tokens)
                 {
-                    Vector3 newPosition = GetRoutePosition(
-                        player, token, boardState.GetRouteIndex(token));
-                    token.transform.position = newPosition;
+                    if (boardState.GetState(token) == TokenState.Track)
+                    {
+                        token.transform.position = GetRoutePosition(
+                            player, token, boardState.GetRouteIndex(token));
+                    }
                 }
             }
         }
