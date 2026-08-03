@@ -129,6 +129,11 @@ namespace ElementalLudo.Gameplay
 
             DrawEndMatchButton();
 
+            if (controller.IsCombatVisible)
+            {
+                DrawCombatPanel();
+            }
+
             if (controller.ElementalModeEnabled)
             {
                 DrawElementalRulesPanel();
@@ -262,6 +267,90 @@ namespace ElementalLudo.Gameplay
             }
 
             GUILayout.EndArea();
+        }
+
+        /// <summary>
+        /// The dice duel, centred over the board. Only ever drawn for duels
+        /// the player is part of; AI-versus-AI ones resolve without any of
+        /// this and never set IsCombatVisible.
+        /// </summary>
+        private void DrawCombatPanel()
+        {
+            const float width = 460f;
+            const float height = 260f;
+
+            LudoCombatReport report = controller.CombatReport;
+            if (report.Attacker == null || report.Defender == null)
+            {
+                return;
+            }
+
+            GUILayout.BeginArea(
+                new Rect(
+                    (Screen.width - width) * 0.5f,
+                    (Screen.height - height) * 0.5f,
+                    width,
+                    height),
+                panelStyle);
+
+            GUILayout.Label("DUELO DE DADOS", titleStyle);
+            GUILayout.Space(10f);
+
+            DrawCombatSide(report.Attacker, report.Outcome.Attacker, "ATACA");
+            GUILayout.Space(6f);
+            DrawCombatSide(report.Defender, report.Outcome.Defender, "DEFIENDE");
+            GUILayout.Space(12f);
+
+            Token winner = report.Outcome.AttackerWins
+                ? report.Attacker
+                : report.Defender;
+            string verdict = report.Outcome.AttackerWins
+                ? "¡Captura!"
+                : "Rechazado";
+            GUILayout.Label(
+                $"{verdict}  —  gana " +
+                $"{LudoGameController.SpanishColorName(winner.OwnerStyle.PlayerId)} " +
+                $"{winner.TokenId}",
+                winnerStyle);
+
+            GUILayout.EndArea();
+        }
+
+        private void DrawCombatSide(Token token, LudoCombatRoll roll, string role)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Box(
+                string.Empty,
+                MakeAccentStyle(token.OwnerStyle.TokenColor),
+                GUILayout.Width(5f),
+                GUILayout.Height(40f));
+            GUILayout.Space(8f);
+            GUILayout.BeginVertical();
+            GUILayout.Label(
+                $"{role}  ·  " +
+                $"{LudoGameController.SpanishColorName(token.OwnerStyle.PlayerId)} " +
+                $"{token.TokenId}",
+                sectionLabelStyle);
+            GUILayout.Label(FormatDice(roll), ruleTitleStyle);
+            GUILayout.Label(LudoCombatInfo.Describe(roll), hintStyle);
+            GUILayout.EndVertical();
+            GUILayout.EndHorizontal();
+        }
+
+        private static string FormatDice(LudoCombatRoll roll)
+        {
+            if (roll.Dice == null)
+            {
+                return string.Empty;
+            }
+
+            string dice = string.Empty;
+            foreach (int die in roll.Dice)
+            {
+                dice += dice.Length == 0 ? die.ToString() : $"  {die}";
+            }
+
+            return $"[ {dice} ]   = {roll.Pips}";
         }
 
         private void DrawElementalRulesPanel()

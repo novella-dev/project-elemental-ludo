@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using ElementalLudo.Tokens;
 using UnityEngine;
 
 namespace ElementalLudo.Gameplay
@@ -61,6 +62,28 @@ namespace ElementalLudo.Gameplay
         }
 
         public bool AttackerWins => Attacker.Score > Defender.Score;
+    }
+
+    /// <summary>
+    /// A duel plus who fought it, handed to the UI so it can show the throw.
+    /// Carries the tokens rather than names or colours so the view can read
+    /// whatever it needs off their PlayerStyle.
+    /// </summary>
+    public readonly struct LudoCombatReport
+    {
+        public Token Attacker { get; }
+        public Token Defender { get; }
+        public LudoCombatOutcome Outcome { get; }
+
+        public LudoCombatReport(
+            Token attacker,
+            Token defender,
+            LudoCombatOutcome outcome)
+        {
+            Attacker = attacker;
+            Defender = defender;
+            Outcome = outcome;
+        }
     }
 
     /// <summary>
