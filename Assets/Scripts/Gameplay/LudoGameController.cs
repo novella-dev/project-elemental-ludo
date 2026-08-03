@@ -758,7 +758,9 @@ namespace ElementalLudo.Gameplay
                 CaptureOpponentTokensOnCell(player, token);
                 RepositionSameColorTokens(player);
                 statusMessage = $"{token.name} entered the starting square.";
-                LogMove($"Token {SpanishColorName(token.OwnerStyle.PlayerId)} {token.TokenId} sale de casa.");
+                LogMove(
+                    $"Token {SpanishColorName(token.OwnerStyle.PlayerId)} {token.TokenId} " +
+                    $"sale de casa a {DescribeCell(player, 0)}.");
                 LogBarrierIfFormed(player, token, 0);
             }
             else
@@ -787,7 +789,9 @@ namespace ElementalLudo.Gameplay
                 {
                     statusMessage =
                         $"{token.name} moved {rolledValue} spaces.";
-                    LogMove($"Token {SpanishColorName(token.OwnerStyle.PlayerId)} {token.TokenId} se mueve a la casilla {action.DestinationRouteIndex}.");
+                    LogMove(
+                        $"Token {SpanishColorName(token.OwnerStyle.PlayerId)} {token.TokenId} " +
+                        $"se mueve a {DescribeCell(player, action.DestinationRouteIndex)}.");
                     LogBarrierIfFormed(player, token, action.DestinationRouteIndex);
                 }
             }
@@ -1163,14 +1167,33 @@ namespace ElementalLudo.Gameplay
             }
         }
 
+        /// <summary>
+        /// How a square reads in the log: the number painted on the board, or
+        /// a plain description for the squares that carry no number.
+        /// </summary>
+        private static string DescribeCell(LudoPlayerState player, int routeIndex)
+        {
+            return LudoBoardRoutes.TryGetCellLabel(player.Route[routeIndex], out int label)
+                ? $"la casilla {label}"
+                : "su pasillo final";
+        }
+
         private void LogBarrierIfFormed(LudoPlayerState player, Token token, int routeIndex)
         {
             Vector2Int cell = player.Route[routeIndex];
+
+            // Only the shared path is worth reporting: two of your own tokens
+            // sitting together in your own final lane block nobody.
+            if (!LudoBoardRoutes.TryGetCellLabel(cell, out int label))
+            {
+                return;
+            }
+
             if (LudoRulesEngine.CountSameColorTokensOnCell(boardState, player, cell) == 2)
             {
                 LogMove(
                     $"Token {SpanishColorName(token.OwnerStyle.PlayerId)} {token.TokenId} " +
-                    $"forma una barrera en la casilla {routeIndex}.");
+                    $"forma una barrera en la casilla {label}.");
             }
         }
     }

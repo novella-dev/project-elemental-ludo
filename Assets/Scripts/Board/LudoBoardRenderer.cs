@@ -13,7 +13,7 @@ namespace ElementalLudo.Board
         private const string BoardShaderName = "Elemental Ludo/Board Vertex Color";
         private const int CircleSegments = 64;
         private const int CellLabelCount = 68;
-        private const int CellLabelStartIndex = 29;
+        private const int CellLabelStartIndex = LudoBoardRoutes.CellLabelStartIndex;
 
         private static readonly Color GridColor = new Color32(73, 78, 78, 255);
         private static readonly Color Red = new Color32(211, 17, 54, 255);

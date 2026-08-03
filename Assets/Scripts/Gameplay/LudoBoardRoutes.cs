@@ -145,9 +145,40 @@ namespace ElementalLudo.Gameplay
                 }
             };
 
+        /// <summary>
+        /// Shared-path index carrying printed number 1. The numbers painted on
+        /// the board and anything that reports a square to the player have to
+        /// read from here, or they'd quote different numbers for the same cell.
+        /// </summary>
+        public const int CellLabelStartIndex = 29;
+
         public static Vector2Int GetSharedPathCell(int index)
         {
             return MainPath[(index % SharedPathLength + SharedPathLength) % SharedPathLength];
+        }
+
+        /// <summary>
+        /// The number printed on <paramref name="cell"/>. False for squares
+        /// that carry no number: a player's own final lane and the goal.
+        /// </summary>
+        public static bool TryGetCellLabel(Vector2Int cell, out int label)
+        {
+            for (int index = 0; index < SharedPathLength; index++)
+            {
+                if (MainPath[index] != cell)
+                {
+                    continue;
+                }
+
+                // Inverse of the placement rule: number N sits at index
+                // (CellLabelStartIndex + N - 1) % SharedPathLength.
+                int offset = index - CellLabelStartIndex;
+                label = ((offset % SharedPathLength) + SharedPathLength) % SharedPathLength + 1;
+                return true;
+            }
+
+            label = 0;
+            return false;
         }
 
         public static bool TryGetRoute(string playerId, out Vector2Int[] route)
