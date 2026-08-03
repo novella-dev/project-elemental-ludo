@@ -137,6 +137,24 @@ namespace ElementalLudo.Gameplay
 
         /// <summary>The duel in progress, or null once it has resolved.</summary>
         public LudoCombatSession CombatSession => combatSession;
+
+        /// <summary>
+        /// The arena's camera framings, forwarded so the view can offer them
+        /// without reaching into the Board namespace itself.
+        /// </summary>
+        public IReadOnlyList<string> CombatCameraLabels =>
+            LudoCombatArena.PresetLabels;
+
+        public int CombatCameraPreset =>
+            combatArena != null ? combatArena.CameraPreset : 0;
+
+        public void SetCombatCameraPreset(int index)
+        {
+            if (combatArena != null)
+            {
+                combatArena.SetCameraPreset(index);
+            }
+        }
         public bool IsInitialized => initialized;
         public bool IsDiceRolling => dice != null && dice.IsRolling;
         public LudoGameMode DefaultMode => defaultMode;
