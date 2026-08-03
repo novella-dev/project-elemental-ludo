@@ -748,11 +748,11 @@ namespace ElementalLudo.Board
 
             AddCelStyledGeometry(() =>
             {
-                AddCloud(bankA, 1.05f, 0.85f, 5);
-                AddCloud(bankB, 1.15f, 0.95f, 5);
-                AddCloud(bankC, 0.95f, 0.80f, 4);
-                AddCloud(bankD, 1.05f, 0.90f, 5);
-                AddCloud(bankE, 0.85f, 0.70f, 4);
+                AddCloud(bankA, 1.05f, 0.85f, 5, true);
+                AddCloud(bankB, 1.15f, 0.95f, 5, true);
+                AddCloud(bankC, 0.95f, 0.80f, 4, true);
+                AddCloud(bankD, 1.05f, 0.90f, 5, true);
+                AddCloud(bankE, 0.85f, 0.70f, 4, true);
 
                 AddLightningBolt(bankA, new Vector2(-0.6f, 0.8f),
                     0.85f, 1.35f, 0.30f, 0f);
@@ -836,23 +836,31 @@ namespace ElementalLudo.Board
             AddDome(center, radius, GroundDepth, radius * 0.85f, LeafDark, LeafLight, 3, 10);
         }
 
-        private void AddCloud(Vector2 center, float radius, float height, int puffCount)
+        private void AddCloud(
+            Vector2 center,
+            float radius,
+            float height,
+            int puffCount,
+            bool drifts = false)
         {
             float randomSeed = Frac(
                 center.x * 0.073f
                 + center.y * 0.113f
                 + radius * 0.37f);
             float transitionSpeed = Mathf.Lerp(
-                0.20f,
+                0.22f,
                 0.30f,
                 Frac(randomSeed * 3.71f));
+            float driftRadius = drifts
+                ? Mathf.Lerp(0.10f, 0.16f, Frac(randomSeed * 5.23f))
+                : 0f;
 
             AddAnimatedGeometry(
                 new Vector4(
                     CloudAnimation,
                     randomSeed,
                     transitionSpeed,
-                    0f),
+                    driftRadius),
                 () =>
                 {
                     AddDome(
