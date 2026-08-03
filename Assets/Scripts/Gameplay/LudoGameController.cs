@@ -141,6 +141,32 @@ namespace ElementalLudo.Gameplay
             EnsureTokenGroundMarkers();
         }
 
+        /// <summary>
+        /// Creates the board presenter if the scene has none. Without this the
+        /// mode's look was silently never applied, since nothing in the scene
+        /// carries this component.
+        /// </summary>
+        private void EnsureBoardPresenter()
+        {
+            if (boardPresenter != null)
+            {
+                return;
+            }
+
+            boardPresenter = FindFirstObjectByType<LudoBoardPresenter>();
+            if (boardPresenter != null)
+            {
+                return;
+            }
+
+            GameObject presenterObject = new GameObject("BoardPresenter")
+            {
+                hideFlags = HideFlags.DontSave
+            };
+            presenterObject.transform.SetParent(transform, false);
+            boardPresenter = presenterObject.AddComponent<LudoBoardPresenter>();
+        }
+
         private void EnsureTokenGroundMarkers()
         {
             if (tokenGroundMarkers != null)
@@ -282,15 +308,8 @@ namespace ElementalLudo.Gameplay
             settings = matchSettings;
             elementalModeEnabled = matchSettings.ElementalRules;
 
-            if (boardPresenter == null)
-            {
-                boardPresenter = FindFirstObjectByType<LudoBoardPresenter>();
-            }
-
-            if (boardPresenter != null)
-            {
-                boardPresenter.Apply(matchSettings.UsesClassicBoard);
-            }
+            EnsureBoardPresenter();
+            boardPresenter.Apply(matchSettings.UsesClassicBoard);
 
             if (matchSettings.HasAIOpponents)
             {
