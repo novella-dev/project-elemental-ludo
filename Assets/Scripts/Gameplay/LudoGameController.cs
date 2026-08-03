@@ -26,6 +26,7 @@ namespace ElementalLudo.Gameplay
         [Tooltip("Must implement IPlayerController (e.g. AIPlayerController). Left empty, an AIPlayerController is found or created automatically.")]
         [SerializeField] private MonoBehaviour aiControllerSource;
         [SerializeField] private LudoReachableCellsHighlighter reachableCellsHighlighter;
+        [SerializeField] private LudoTokenGroundMarkers tokenGroundMarkers;
 
         [Header("Mode")]
         [Tooltip("SinglePlayer holds the game at startup until an element is picked, then hands the other three seats to the AI.")]
@@ -50,6 +51,7 @@ namespace ElementalLudo.Gameplay
         private readonly Dictionary<Token, Vector3> homePositions =
             new Dictionary<Token, Vector3>(16);
         private readonly List<string> moveHistory = new List<string>(MaxMoveHistoryEntries);
+        private readonly List<Token> trackTokenBuffer = new List<Token>(16);
 
         // One controller per seat, indexed alongside `players`. Hot-seat
         // points every entry at the same human controller.
@@ -117,6 +119,28 @@ namespace ElementalLudo.Gameplay
 
             EnsurePlayerController();
             EnsureReachableCellsHighlighter();
+            EnsureTokenGroundMarkers();
+        }
+
+        private void EnsureTokenGroundMarkers()
+        {
+            if (tokenGroundMarkers != null)
+            {
+                return;
+            }
+
+            tokenGroundMarkers = FindFirstObjectByType<LudoTokenGroundMarkers>();
+            if (tokenGroundMarkers != null)
+            {
+                return;
+            }
+
+            GameObject markersObject = new GameObject("TokenGroundMarkers")
+            {
+                hideFlags = HideFlags.DontSave
+            };
+            markersObject.transform.SetParent(transform, false);
+            tokenGroundMarkers = markersObject.AddComponent<LudoTokenGroundMarkers>();
         }
 
         private void EnsurePlayerController()
@@ -469,6 +493,13 @@ namespace ElementalLudo.Gameplay
             legalActions.Clear();
             moveHistory.Clear();
             ClearReachableCells();
+
+            // Everyone is back home, so nothing is standing on the track.
+            if (tokenGroundMarkers != null)
+            {
+                tokenGroundMarkers.Clear();
+            }
+
             phase = LudoTurnPhase.AwaitingRoll;
             dice.SetRollEnabled(true);
             SyncDiceAccent();
@@ -1059,6 +1090,8 @@ namespace ElementalLudo.Gameplay
         /// </summary>
         private void RepositionTrackTokens()
         {
+            trackTokenBuffer.Clear();
+
             foreach (LudoPlayerState player in players)
             {
                 foreach (Token token in player.Tokens)
@@ -1067,8 +1100,15 @@ namespace ElementalLudo.Gameplay
                     {
                         token.transform.position = GetRoutePosition(
                             player, token, boardState.GetRouteIndex(token));
+                        trackTokenBuffer.Add(token);
                     }
                 }
+            }
+
+            // Same trigger points: whoever is out on the board just changed.
+            if (tokenGroundMarkers != null)
+            {
+                tokenGroundMarkers.SetTokens(trackTokenBuffer);
             }
         }
 
