@@ -78,10 +78,11 @@ namespace ElementalLudo.Gameplay
         private bool humanDefeated;
         private int activePlayerIndex;
         private int rolledValue;
+        private int pendingBonusDistance;
         private bool actionPerformed;
         private bool autoRoll;
         private bool initialized;
-        private bool captureHappenedThisTurn;
+        private bool extraRollAfterRewards;
         private int consecutiveSixes;
         private Token lastMovedToken;
 
@@ -95,6 +96,11 @@ namespace ElementalLudo.Gameplay
         public PlayerStyle ActivePlayer =>
             initialized ? players[activePlayerIndex].Style : null;
         public int RolledValue => rolledValue;
+        /// <summary>The exact distance currently offered by the die or reward.</summary>
+        public int ActionMoveDistance => pendingBonusDistance > 0
+            ? pendingBonusDistance
+            : rolledValue;
+        public bool IsBonusMove => pendingBonusDistance > 0;
         public LudoTurnPhase Phase => phase;
         public IReadOnlyList<LudoLegalAction> LegalActions => legalActions;
         public IReadOnlyList<string> MoveHistory => moveHistory;
@@ -287,6 +293,10 @@ namespace ElementalLudo.Gameplay
 
             awaitingSetup = true;
             phase = LudoTurnPhase.AwaitingRoll;
+            rolledValue = 0;
+            pendingBonusDistance = 0;
+            actionPerformed = false;
+            extraRollAfterRewards = false;
             selectedToken = null;
             legalActions.Clear();
             ClearReachableCells();
@@ -526,6 +536,8 @@ namespace ElementalLudo.Gameplay
                 players[activePlayerIndex],
                 players,
                 rolledValue,
+                ActionMoveDistance,
+                IsBonusMove,
                 legalActions,
                 BuildRulesContext());
         }
@@ -583,8 +595,9 @@ namespace ElementalLudo.Gameplay
 
             activePlayerIndex = 0;
             rolledValue = 0;
+            pendingBonusDistance = 0;
             actionPerformed = false;
-            captureHappenedThisTurn = false;
+            extraRollAfterRewards = false;
             consecutiveSixes = 0;
             lastMovedToken = null;
             selectedToken = null;
@@ -728,7 +741,8 @@ namespace ElementalLudo.Gameplay
             rolledValue = Mathf.Clamp(value, 1, 6);
             dice.SetRollEnabled(false);
             actionPerformed = false;
-            captureHappenedThisTurn = false;
+            pendingBonusDistance = 0;
+            extraRollAfterRewards = false;
 
             LogMove($"Turno de {SpanishColorName(ActivePlayer.PlayerId)}. Tira el dado... {rolledValue}");
 
@@ -851,6 +865,18 @@ namespace ElementalLudo.Gameplay
         private void CalculateLegalActions()
         {
             LudoPlayerState player = players[activePlayerIndex];
+            if (pendingBonusDistance > 0)
+            {
+                LudoRulesEngine.CalculateBonusActions(
+                    boardState,
+                    player,
+                    players,
+                    pendingBonusDistance,
+                    BuildRulesContext(),
+                    legalActions);
+                return;
+            }
+
             LudoRulesEngine.CalculateLegalActions(
                 boardState,
                 player,
@@ -858,6 +884,11 @@ namespace ElementalLudo.Gameplay
                 rolledValue,
                 BuildRulesContext(),
                 legalActions);
+        }
+
+        public int GetActionMoveDistance(LudoLegalAction action)
+        {
+            return action.MoveDistance;
         }
 
         private bool TryExecuteAction(LudoLegalAction requestedAction)
@@ -895,7 +926,8 @@ namespace ElementalLudo.Gameplay
                 if (candidate.Token == requestedAction.Token &&
                     candidate.Type == requestedAction.Type &&
                     candidate.DestinationRouteIndex ==
-                    requestedAction.DestinationRouteIndex)
+                    requestedAction.DestinationRouteIndex &&
+                    candidate.MoveDistance == requestedAction.MoveDistance)
                 {
                     legalAction = candidate;
                     return true;
@@ -909,7 +941,18 @@ namespace ElementalLudo.Gameplay
         {
             LudoPlayerState player = players[activePlayerIndex];
             Token token = action.Token;
+            bool wasBonusMove = pendingBonusDistance > 0;
+            int moveDistance = GetActionMoveDistance(action);
+            bool earnedCaptureBonus = false;
+            bool reachedGoal = false;
             lastMovedToken = token;
+
+            if (!wasBonusMove)
+            {
+                extraRollAfterRewards =
+                    rolledValue == 6 ||
+                    (rolledValue == 5 && action.Type == LudoActionType.LeaveHome);
+            }
 
             if (action.Type == LudoActionType.LeaveHome)
             {
@@ -917,7 +960,7 @@ namespace ElementalLudo.Gameplay
                     token,
                     GetRoutePosition(player, token, 0));
                 boardState.SetTrack(token, 0);
-                CaptureOpponentTokensOnCell(player, token);
+                earnedCaptureBonus = CaptureOpponentTokensOnCell(player, token);
                 RepositionTrackTokens();
                 statusMessage = $"{token.name} entered the starting square.";
                 LogMove(
@@ -938,25 +981,30 @@ namespace ElementalLudo.Gameplay
                     boardState.SetTrack(token, routeIndex);
                 }
 
-                CaptureOpponentTokensOnCell(player, token);
+                earnedCaptureBonus = CaptureOpponentTokensOnCell(player, token);
                 RepositionTrackTokens();
 
                 if (action.DestinationRouteIndex == player.Route.Length - 1)
                 {
                     boardState.SetFinished(token, action.DestinationRouteIndex);
+                    reachedGoal = true;
                     statusMessage = $"{token.name} reached the goal.";
                     LogMove($"Token {SpanishColorName(token.OwnerStyle.PlayerId)} {token.TokenId} llega a la meta.");
                 }
                 else
                 {
                     statusMessage =
-                        $"{token.name} moved {rolledValue} spaces.";
+                        $"{token.name} moved {moveDistance} spaces.";
                     LogMove(
                         $"Token {SpanishColorName(token.OwnerStyle.PlayerId)} {token.TokenId} " +
                         $"se mueve a {DescribeCell(player, action.DestinationRouteIndex)}.");
                     LogBarrierIfFormed(player, token, action.DestinationRouteIndex);
                 }
             }
+
+            // The action that was just resolved no longer owns the bonus
+            // slot. A capture or goal below may immediately fill it again.
+            pendingBonusDistance = 0;
 
             if (LudoMovementRules.HasWon(boardState, player.Tokens, BuildRulesContext()))
             {
@@ -970,10 +1018,62 @@ namespace ElementalLudo.Gameplay
                 yield break;
             }
 
-            bool bonusTurn = captureHappenedThisTurn ||
-                             rolledValue == 6 ||
-                             (rolledValue == 5 && action.Type == LudoActionType.LeaveHome);
-            EndTurn(bonusTurn);
+            if (earnedCaptureBonus)
+            {
+                BeginBonusMove(LudoMovementRules.CaptureBonusDistance);
+                yield break;
+            }
+
+            if (reachedGoal)
+            {
+                BeginBonusMove(LudoMovementRules.GoalBonusDistance);
+                yield break;
+            }
+
+            EndTurn(extraRollAfterRewards);
+        }
+
+        private void BeginBonusMove(int moveDistance)
+        {
+            pendingBonusDistance = moveDistance;
+            selectedToken = null;
+            actionPerformed = false;
+            CalculateLegalActions();
+
+            string reason = moveDistance == LudoMovementRules.CaptureBonusDistance
+                ? "capture"
+                : "goal";
+
+            if (legalActions.Count == 0)
+            {
+                pendingBonusDistance = 0;
+                phase = LudoTurnPhase.Resolving;
+                SetTokenInteractionStates(false);
+                ClearReachableCells();
+                statusMessage =
+                    $"No token can move all {moveDistance} bonus spaces.";
+                LogMove(
+                    $"Premio de {moveDistance} por {reason}: no hay movimiento válido.");
+                StartCoroutine(EndTurnAfterDelay(extraRollAfterRewards));
+                return;
+            }
+
+            phase = LudoTurnPhase.AwaitingAction;
+            SetTokenInteractionStates(true);
+            statusMessage =
+                $"{DisplayName(ActivePlayer.PlayerId)} must move one token " +
+                $"exactly {moveDistance} spaces ({reason} bonus).";
+            LogMove($"Premio de {moveDistance} casillas por {reason}.");
+            HighlightReachableCells();
+
+            if (legalActions.Count == 1 &&
+                autoExecuteSingleAction &&
+                TryExecuteAction(legalActions[0]))
+            {
+                return;
+            }
+
+            NotifyActionTurn();
         }
 
         private IEnumerator MoveTokenTo(Token token, Vector3 destination)
@@ -1047,8 +1147,9 @@ namespace ElementalLudo.Gameplay
             legalActions.Clear();
             ClearReachableCells();
             rolledValue = 0;
+            pendingBonusDistance = 0;
             actionPerformed = false;
-            captureHappenedThisTurn = false;
+            extraRollAfterRewards = false;
             selectedToken = null;
 
             if (bonusTurn)
@@ -1110,6 +1211,8 @@ namespace ElementalLudo.Gameplay
             legalActions.Clear();
             ClearReachableCells();
             rolledValue = 0;
+            pendingBonusDistance = 0;
+            extraRollAfterRewards = false;
             actionPerformed = true;
             phase = LudoTurnPhase.GameOver;
             dice.SetRollEnabled(false);
@@ -1218,7 +1321,9 @@ namespace ElementalLudo.Gameplay
             return new Vector2Int(int.MinValue, int.MinValue);
         }
 
-        private void CaptureOpponentTokensOnCell(LudoPlayerState movingPlayer, Token movingToken)
+        private bool CaptureOpponentTokensOnCell(
+            LudoPlayerState movingPlayer,
+            Token movingToken)
         {
             List<Token> captured = LudoRulesEngine.GetCapturedTokens(
                 boardState,
@@ -1227,9 +1332,12 @@ namespace ElementalLudo.Gameplay
                 movingToken,
                 BuildRulesContext());
 
+            bool awardsCaptureBonus = captured.Count > 0 &&
+                !LudoBoardRoutes.IsSafeCell(
+                    movingPlayer.Route[boardState.GetRouteIndex(movingToken)]);
+
             foreach (Token token in captured)
             {
-                captureHappenedThisTurn = true;
                 string attacker =
                     $"Token {SpanishColorName(movingToken.OwnerStyle.PlayerId)} {movingToken.TokenId}";
                 string victim =
@@ -1252,6 +1360,8 @@ namespace ElementalLudo.Gameplay
                 statusMessage = $"{movingToken.name} captured {token.name}!";
                 LogMove($"{attacker} captura a {victim}.");
             }
+
+            return awardsCaptureBonus;
         }
 
         /// <summary>
@@ -1299,6 +1409,8 @@ namespace ElementalLudo.Gameplay
             legalActions.Clear();
             ClearReachableCells();
             rolledValue = 0;
+            pendingBonusDistance = 0;
+            extraRollAfterRewards = false;
             actionPerformed = true;
             selectedToken = null;
             phase = LudoTurnPhase.GameOver;

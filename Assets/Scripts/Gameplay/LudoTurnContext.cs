@@ -16,6 +16,8 @@ namespace ElementalLudo.Gameplay
         public LudoPlayerState Player { get; }
         public IReadOnlyList<LudoPlayerState> AllPlayers { get; }
         public int RolledValue { get; }
+        public int MoveDistance { get; }
+        public bool IsBonusMove { get; }
         public IReadOnlyList<LudoLegalAction> LegalActions { get; }
         public LudoRulesContext Rules { get; }
 
@@ -24,6 +26,8 @@ namespace ElementalLudo.Gameplay
             LudoPlayerState player,
             IReadOnlyList<LudoPlayerState> allPlayers,
             int rolledValue,
+            int moveDistance,
+            bool isBonusMove,
             IReadOnlyList<LudoLegalAction> legalActions,
             LudoRulesContext rules)
         {
@@ -31,6 +35,8 @@ namespace ElementalLudo.Gameplay
             Player = player;
             AllPlayers = allPlayers;
             RolledValue = rolledValue;
+            MoveDistance = moveDistance;
+            IsBonusMove = isBonusMove;
             LegalActions = legalActions;
             Rules = rules;
         }
