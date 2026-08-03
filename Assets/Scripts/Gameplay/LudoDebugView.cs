@@ -24,7 +24,19 @@ namespace ElementalLudo.Gameplay
         [SerializeField] private LudoGameController controller;
         [SerializeField] private bool showPanel = true;
 
+        private static readonly LudoGameMode[] SelectableModes =
+        {
+            LudoGameMode.Classic,
+            LudoGameMode.Adventure,
+            LudoGameMode.Hardcore,
+            LudoGameMode.Multiplayer
+        };
+
         private LudoAIDifficulty setupDifficulty = LudoAIDifficulty.Normal;
+        private LudoGameMode setupMode;
+        private bool setupElementalRules;
+        private int setupSeatIndex;
+        private bool setupDefaultsApplied;
 
         private readonly Dictionary<Color, Texture2D> textureCache =
             new Dictionary<Color, Texture2D>();
@@ -76,7 +88,7 @@ namespace ElementalLudo.Gameplay
 
             if (controller.AwaitingSetup)
             {
-                DrawSetupPopup();
+                DrawStartMenu();
                 return;
             }
 
@@ -188,14 +200,17 @@ namespace ElementalLudo.Gameplay
         }
 
         /// <summary>
-        /// Modal element picker shown before a one-player game starts. Choices
-        /// are collected and applied after the layout block closes, so the
-        /// game doesn't restart midway through building this frame's GUI.
+        /// Modal start menu: mode on the left, that mode's options on the
+        /// right. Starting is deferred until after the layout block closes, so
+        /// the match doesn't begin midway through building this frame's GUI.
         /// </summary>
-        private void DrawSetupPopup()
+        private void DrawStartMenu()
         {
-            const float width = 560f;
-            const float height = 600f;
+            const float width = 900f;
+            const float height = 560f;
+            const float modeColumnWidth = 330f;
+
+            ApplyStartMenuDefaults();
 
             GUILayout.BeginArea(
                 new Rect(
@@ -206,78 +221,214 @@ namespace ElementalLudo.Gameplay
                 panelStyle);
 
             GUILayout.Label("ELEMENTAL LUDO", titleStyle);
-            GUILayout.Label(
-                "Elige tu elemento — la IA jugará los otros tres",
-                subtitleStyle);
-            GUILayout.Space(12f);
+            GUILayout.Label("Elige cómo quieres jugar", subtitleStyle);
+            GUILayout.Space(14f);
 
-            GUILayout.Label("DIFICULTAD", sectionLabelStyle);
-            GUILayout.Space(4f);
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button(
-                    "Fácil",
-                    setupDifficulty == LudoAIDifficulty.Easy ? toggleOnStyle : toggleOffStyle))
+
+            GUILayout.BeginVertical(GUILayout.Width(modeColumnWidth));
+            GUILayout.Label("MODO", sectionLabelStyle);
+            GUILayout.Space(4f);
+            foreach (LudoGameMode mode in SelectableModes)
             {
-                setupDifficulty = LudoAIDifficulty.Easy;
+                DrawModeCard(mode);
             }
 
-            if (GUILayout.Button(
-                    "Normal",
-                    setupDifficulty == LudoAIDifficulty.Normal ? toggleOnStyle : toggleOffStyle))
-            {
-                setupDifficulty = LudoAIDifficulty.Normal;
-            }
+            GUILayout.EndVertical();
+
+            GUILayout.Space(20f);
+
+            GUILayout.BeginVertical();
+            bool start = DrawStartMenuOptions();
+            GUILayout.EndVertical();
 
             GUILayout.EndHorizontal();
-            GUILayout.Space(4f);
-            GUILayout.Label(
-                setupDifficulty == LudoAIDifficulty.Easy
-                    ? "Avanza al azar y saca fichas cuando puede. Si captura, es casualidad."
-                    : "Prioriza capturar, formar barreras y no quedarse a tiro.",
-                hintStyle);
-
-            GUILayout.Space(14f);
-            GUILayout.Label("ELEMENTO", sectionLabelStyle);
-            GUILayout.Space(4f);
-
-            bool picked = false;
-            LudoElement pickedElement = default;
-            foreach (LudoPlayerState player in controller.Players)
-            {
-                if (DrawSetupElementCard(player))
-                {
-                    picked = true;
-                    pickedElement = player.Element;
-                }
-            }
-
             GUILayout.EndArea();
 
-            if (picked)
+            if (start)
             {
-                controller.StartSinglePlayer(pickedElement, setupDifficulty);
+                controller.StartMatch(BuildMatchSettings());
             }
         }
 
-        private bool DrawSetupElementCard(LudoPlayerState player)
+        /// <summary>
+        /// Seeds the menu from the controller's configured default the first
+        /// time it opens, so the Inspector value still means something.
+        /// </summary>
+        private void ApplyStartMenuDefaults()
         {
+            if (setupDefaultsApplied)
+            {
+                return;
+            }
+
+            setupMode = controller.DefaultMode;
+            setupElementalRules = false;
+            setupSeatIndex = 0;
+            setupDefaultsApplied = true;
+        }
+
+        private void DrawModeCard(LudoGameMode mode)
+        {
+            bool isSelected = setupMode == mode;
+
             GUILayout.BeginHorizontal();
             GUILayout.Box(
                 string.Empty,
-                MakeAccentStyle(player.Style.TokenColor),
-                GUILayout.Width(5f),
+                MakeAccentStyle(isSelected ? Color.white : new Color(1f, 1f, 1f, 0.18f)),
+                GUILayout.Width(4f),
                 GUILayout.ExpandHeight(true));
             GUILayout.Space(8f);
             GUILayout.BeginVertical();
-            GUILayout.Label(ElementHeading(player), ruleTitleStyle);
-            GUILayout.Label(LudoElementInfo.RuleSummary(player.Element), hintStyle);
-            bool clicked = GUILayout.Button(
-                $"Jugar con {LudoElementInfo.DisplayName(player.Element)}",
-                actionCardStyle);
+
+            if (GUILayout.Button(
+                    LudoGameModeInfo.DisplayName(mode),
+                    isSelected ? toggleOnStyle : toggleOffStyle))
+            {
+                setupMode = mode;
+
+                // Classic is the mode that opts out of the elemental layer, so
+                // the toggle can't survive a switch into it.
+                if (!LudoMatchSettings.SupportsElementalRules(mode))
+                {
+                    setupElementalRules = false;
+                }
+            }
+
+            GUILayout.Label(LudoGameModeInfo.Summary(mode), hintStyle);
             GUILayout.EndVertical();
             GUILayout.EndHorizontal();
             GUILayout.Space(8f);
-            return clicked;
+        }
+
+        /// <summary>Right-hand column. Returns true when the player starts.</summary>
+        private bool DrawStartMenuOptions()
+        {
+            bool hasAI = setupMode != LudoGameMode.Multiplayer;
+
+            GUILayout.Label("OPCIONES", sectionLabelStyle);
+            GUILayout.Space(4f);
+
+            if (hasAI)
+            {
+                GUILayout.Label("Dificultad de la IA", ruleTitleStyle);
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button(
+                        "Fácil",
+                        setupDifficulty == LudoAIDifficulty.Easy ? toggleOnStyle : toggleOffStyle))
+                {
+                    setupDifficulty = LudoAIDifficulty.Easy;
+                }
+
+                if (GUILayout.Button(
+                        "Normal",
+                        setupDifficulty == LudoAIDifficulty.Normal ? toggleOnStyle : toggleOffStyle))
+                {
+                    setupDifficulty = LudoAIDifficulty.Normal;
+                }
+
+                GUILayout.EndHorizontal();
+                GUILayout.Label(
+                    setupDifficulty == LudoAIDifficulty.Easy
+                        ? "Avanza al azar y saca fichas cuando puede. Si captura, es casualidad."
+                        : "Prioriza capturar, formar barreras y no quedarse a tiro.",
+                    hintStyle);
+            }
+            else
+            {
+                GUILayout.Label("Sin IA: los cuatro colores son humanos.", hintStyle);
+            }
+
+            GUILayout.Space(12f);
+
+            if (LudoMatchSettings.SupportsElementalRules(setupMode))
+            {
+                if (GUILayout.Button(
+                        setupElementalRules
+                            ? "REGLAS ELEMENTALES: ON"
+                            : "REGLAS ELEMENTALES: OFF",
+                        setupElementalRules ? toggleOnStyle : toggleOffStyle))
+                {
+                    setupElementalRules = !setupElementalRules;
+                }
+
+                GUILayout.Label(
+                    setupElementalRules
+                        ? "Cada color juega con el poder de su elemento."
+                        : "Todos los colores juegan con las mismas reglas.",
+                    hintStyle);
+            }
+            else
+            {
+                GUILayout.Label(
+                    "Clásico no admite reglas elementales.",
+                    hintStyle);
+            }
+
+            GUILayout.Space(12f);
+            GUILayout.Label(hasAI ? "TU COLOR" : "COLORES EN JUEGO", sectionLabelStyle);
+            GUILayout.Space(4f);
+            DrawSeatPicker(hasAI);
+
+            GUILayout.FlexibleSpace();
+            return GUILayout.Button("EMPEZAR", primaryButtonStyle);
+        }
+
+        private void DrawSeatPicker(bool selectable)
+        {
+            IReadOnlyList<LudoPlayerState> seats = controller.Players;
+            for (int index = 0; index < seats.Count; index++)
+            {
+                LudoPlayerState seat = seats[index];
+                bool isChosen = selectable && index == setupSeatIndex;
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Box(
+                    string.Empty,
+                    MakeAccentStyle(seat.Style.TokenColor),
+                    GUILayout.Width(5f),
+                    GUILayout.Height(24f));
+                GUILayout.Space(8f);
+
+                string label = setupElementalRules
+                    ? ElementHeading(seat)
+                    : LudoGameController.SpanishColorName(seat.Style.PlayerId);
+
+                if (!selectable)
+                {
+                    GUILayout.Label(label, ruleTitleStyle);
+                }
+                else if (GUILayout.Button(label, isChosen ? toggleOnStyle : toggleOffStyle))
+                {
+                    setupSeatIndex = index;
+                }
+
+                GUILayout.EndHorizontal();
+                GUILayout.Space(4f);
+            }
+
+            if (selectable && setupElementalRules && setupSeatIndex < seats.Count)
+            {
+                GUILayout.Space(2f);
+                GUILayout.Label(
+                    LudoElementInfo.RuleSummary(seats[setupSeatIndex].Element),
+                    hintStyle);
+            }
+        }
+
+        private LudoMatchSettings BuildMatchSettings()
+        {
+            IReadOnlyList<LudoPlayerState> seats = controller.Players;
+            int seatIndex = Mathf.Clamp(setupSeatIndex, 0, Mathf.Max(0, seats.Count - 1));
+            LudoElement seatElement = seats.Count > 0
+                ? seats[seatIndex].Element
+                : default;
+
+            return new LudoMatchSettings(
+                setupMode,
+                seatElement,
+                setupDifficulty,
+                setupElementalRules);
         }
 
         private void DrawElementalRuleLine(Color accentColor, string title, string description)

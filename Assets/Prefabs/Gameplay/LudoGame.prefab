@@ -49,10 +49,10 @@ MonoBehaviour:
   playerControllerSource: {fileID: 0}
   aiControllerSource: {fileID: 0}
   reachableCellsHighlighter: {fileID: 0}
-  mode: 1
+  tokenGroundMarkers: {fileID: 0}
+  defaultMode: 1
   autoExecuteSingleAction: 1
   noMoveMessageDuration: 1.1
-  elementalModeEnabled: 0
   movementStepDuration: 0.11
 --- !u!114 &820885446124912160
 MonoBehaviour:

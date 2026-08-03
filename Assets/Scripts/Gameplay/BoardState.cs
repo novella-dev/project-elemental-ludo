@@ -67,6 +67,12 @@ namespace ElementalLudo.Gameplay
             tokenStates[token] = new LudoTokenState(TokenState.Finished, Mathf.Max(0, routeIndex));
         }
 
+        /// <summary>Removes a token from play permanently (Hardcore captures).</summary>
+        public void SetEliminated(Token token)
+        {
+            tokenStates[token] = new LudoTokenState(TokenState.Eliminated, -1);
+        }
+
         public BoardState Clone()
         {
             return new BoardState(new Dictionary<Token, LudoTokenState>(tokenStates));

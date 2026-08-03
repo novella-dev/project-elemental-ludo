@@ -6,7 +6,13 @@ namespace ElementalLudo.Tokens
     {
         Home,
         Track,
-        Finished
+        Finished,
+
+        /// <summary>
+        /// Captured under Hardcore rules: out of the game for good, never
+        /// legal to move and occupying no square.
+        /// </summary>
+        Eliminated
     }
 
     public enum TokenInteractionState

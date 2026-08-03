@@ -46,16 +46,53 @@ namespace ElementalLudo.Gameplay
             return true;
         }
 
-        public static bool HasWon(BoardState boardState, IReadOnlyList<Token> tokens)
+        /// <summary>
+        /// Normally every token has to be home. Under Hardcore a single one
+        /// is enough — losing the rest is the price of the rule set.
+        /// </summary>
+        public static bool HasWon(
+            BoardState boardState,
+            IReadOnlyList<Token> tokens,
+            LudoRulesContext context)
         {
             if (tokens == null || tokens.Count != TokensRequiredToWin)
             {
                 return false;
             }
 
+            int finished = 0;
             foreach (Token token in tokens)
             {
-                if (token == null || boardState.GetState(token) != TokenState.Finished)
+                if (token == null)
+                {
+                    return false;
+                }
+
+                if (boardState.GetState(token) == TokenState.Finished)
+                {
+                    finished++;
+                }
+            }
+
+            return context.PermadeathEnabled
+                ? finished >= 1
+                : finished == TokensRequiredToWin;
+        }
+
+        /// <summary>
+        /// A player with nothing left on or off the board. Only reachable
+        /// under Hardcore, where captures are permanent.
+        /// </summary>
+        public static bool IsEliminated(BoardState boardState, IReadOnlyList<Token> tokens)
+        {
+            if (tokens == null || tokens.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (Token token in tokens)
+            {
+                if (token == null || boardState.GetState(token) != TokenState.Eliminated)
                 {
                     return false;
                 }

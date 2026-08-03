@@ -29,14 +29,13 @@ namespace ElementalLudo.Gameplay
         [SerializeField] private LudoTokenGroundMarkers tokenGroundMarkers;
 
         [Header("Mode")]
-        [Tooltip("SinglePlayer holds the game at startup until an element is picked, then hands the other three seats to the AI.")]
-        [SerializeField] private LudoGameMode mode = LudoGameMode.SinglePlayer;
+        [Tooltip("Offered as the default when the start menu opens. The menu is what actually decides the match.")]
+        [SerializeField] private LudoGameMode defaultMode = LudoGameMode.Adventure;
 
         [Header("Turn Behaviour")]
         [SerializeField] private bool autoExecuteSingleAction = true;
         [Min(0f)]
         [SerializeField] private float noMoveMessageDuration = 1.1f;
-        [SerializeField] private bool elementalModeEnabled;
 
         [Header("Movement")]
         [Min(0f)]
@@ -66,6 +65,16 @@ namespace ElementalLudo.Gameplay
         private IPlayerController aiController;
         private BoardState boardState;
         private bool awaitingSetup;
+
+        private LudoMatchSettings settings;
+
+        // Seeded from the match settings, but still flippable from the debug
+        // panel mid-game, so it can't just be read off `settings`.
+        private bool elementalModeEnabled;
+
+        /// <summary>Seat the human holds, or -1 in hot-seat where they all are.</summary>
+        private int humanSeatIndex = -1;
+        private bool humanDefeated;
         private int activePlayerIndex;
         private int rolledValue;
         private bool actionPerformed;
@@ -89,10 +98,14 @@ namespace ElementalLudo.Gameplay
         public IReadOnlyList<LudoLegalAction> LegalActions => legalActions;
         public IReadOnlyList<string> MoveHistory => moveHistory;
         public PlayerStyle Winner => winner;
-        public bool IsGameOver => winner != null;
+        public bool IsGameOver => winner != null || humanDefeated;
+
+        /// <summary>Hardcore only: the player ran out of tokens.</summary>
+        public bool HumanDefeated => humanDefeated;
         public bool IsInitialized => initialized;
         public bool IsDiceRolling => dice != null && dice.IsRolling;
-        public LudoGameMode Mode => mode;
+        public LudoGameMode DefaultMode => defaultMode;
+        public LudoMatchSettings Settings => settings;
 
         /// <summary>True while the game is held waiting for an element pick.</summary>
         public bool AwaitingSetup => awaitingSetup;
@@ -224,44 +237,44 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
-            if (mode == LudoGameMode.SinglePlayer)
-            {
-                // Hold everything until an element is picked; seats can't be
-                // handed out before we know which one the human wants.
-                awaitingSetup = true;
-                dice.SetRollEnabled(false);
-                statusMessage = "Elige tu elemento para empezar.";
-                return;
-            }
-
-            AssignAllSeatsTo(humanController);
-            SubscribePlayerControllers();
-            RestartGame();
+            // Seats can't be handed out before the menu says who is playing
+            // what, so nothing starts until StartMatch arrives.
+            awaitingSetup = true;
+            dice.SetRollEnabled(false);
+            statusMessage = "Elige un modo de juego.";
         }
 
         /// <summary>
-        /// Begins a one-player game: the seat matching <paramref name="humanElement"/>
-        /// is played by the human, the other three by the AI. Turns the
-        /// elemental rules on, since picking an element is meaningless
-        /// without them.
+        /// Begins a match. Hot-seat gives every seat to the human; the rest
+        /// give one seat to the human and the others to the AI.
         /// </summary>
-        public void StartSinglePlayer(LudoElement humanElement, LudoAIDifficulty difficulty)
+        public void StartMatch(LudoMatchSettings matchSettings)
         {
             if (!initialized)
             {
                 return;
             }
 
-            EnsureAIController();
-            if (aiController is AIPlayerController tunableAI)
+            settings = matchSettings;
+            elementalModeEnabled = matchSettings.ElementalRules;
+
+            if (matchSettings.HasAIOpponents)
             {
-                tunableAI.Difficulty = difficulty;
+                EnsureAIController();
+                if (aiController is AIPlayerController tunableAI)
+                {
+                    tunableAI.Difficulty = matchSettings.Difficulty;
+                }
+
+                AssignSeatsForSinglePlayer(matchSettings.PlayerSeat);
+            }
+            else
+            {
+                humanSeatIndex = -1;
+                AssignAllSeatsTo(humanController);
             }
 
-            AssignSeatsForSinglePlayer(humanElement);
             SubscribePlayerControllers();
-
-            elementalModeEnabled = true;
             awaitingSetup = false;
             RestartGame();
         }
@@ -287,6 +300,7 @@ namespace ElementalLudo.Gameplay
                 humanSeat = 0;
             }
 
+            humanSeatIndex = humanSeat;
             UnsubscribePlayerControllers();
             playerControllers.Clear();
             for (int index = 0; index < players.Count; index++)
@@ -460,7 +474,7 @@ namespace ElementalLudo.Gameplay
                 players,
                 rolledValue,
                 legalActions,
-                new LudoRulesContext(elementalModeEnabled));
+                BuildRulesContext());
         }
 
         private void NotifyRollTurn()
@@ -505,6 +519,9 @@ namespace ElementalLudo.Gameplay
             {
                 foreach (Token token in player.Tokens)
                 {
+                    // Hardcore hides tokens as it eliminates them, so bring
+                    // them all back before resetting.
+                    token.gameObject.SetActive(true);
                     boardState.SetHome(token);
                     token.transform.position = homePositions[token];
                     token.SetInteractionState(TokenInteractionState.Normal);
@@ -519,6 +536,7 @@ namespace ElementalLudo.Gameplay
             lastMovedToken = null;
             selectedToken = null;
             winner = null;
+            humanDefeated = false;
             legalActions.Clear();
             moveHistory.Clear();
             ClearReachableCells();
@@ -750,6 +768,16 @@ namespace ElementalLudo.Gameplay
             reachableCellsHighlighter.SetCells(highlightBuffer);
         }
 
+        /// <summary>
+        /// The rule flags in force. Elemental mode is read from the runtime
+        /// field rather than the settings, so the debug toggle still works
+        /// mid-match; permadeath comes from the mode and can't be flipped.
+        /// </summary>
+        private LudoRulesContext BuildRulesContext()
+        {
+            return new LudoRulesContext(elementalModeEnabled, settings.Permadeath);
+        }
+
         /// <summary>Tints the die with whoever is about to roll it.</summary>
         private void SyncDiceAccent()
         {
@@ -775,7 +803,7 @@ namespace ElementalLudo.Gameplay
                 player,
                 players,
                 rolledValue,
-                new LudoRulesContext(elementalModeEnabled),
+                BuildRulesContext(),
                 legalActions);
         }
 
@@ -877,9 +905,15 @@ namespace ElementalLudo.Gameplay
                 }
             }
 
-            if (LudoMovementRules.HasWon(boardState, player.Tokens))
+            if (LudoMovementRules.HasWon(boardState, player.Tokens, BuildRulesContext()))
             {
                 EndGame(player);
+                yield break;
+            }
+
+            // A permanent capture may have just knocked somebody out.
+            if (settings.Permadeath && TryResolveEliminations())
+            {
                 yield break;
             }
 
@@ -971,7 +1005,7 @@ namespace ElementalLudo.Gameplay
             }
             else
             {
-                activePlayerIndex = (activePlayerIndex + 1) % players.Count;
+                activePlayerIndex = NextActiveSeat(activePlayerIndex);
                 consecutiveSixes = 0;
                 lastMovedToken = null;
                 statusMessage =
@@ -988,6 +1022,26 @@ namespace ElementalLudo.Gameplay
             {
                 StartCoroutine(AutoRollAfterDelay());
             }
+        }
+
+        /// <summary>
+        /// Next seat in turn order, skipping anyone knocked out. Bounded by
+        /// the seat count, so a board where everyone is out returns the
+        /// current seat rather than looping forever.
+        /// </summary>
+        private int NextActiveSeat(int fromIndex)
+        {
+            for (int step = 1; step <= players.Count; step++)
+            {
+                int candidate = (fromIndex + step) % players.Count;
+                if (!settings.Permadeath ||
+                    !LudoMovementRules.IsEliminated(boardState, players[candidate].Tokens))
+                {
+                    return candidate;
+                }
+            }
+
+            return fromIndex;
         }
 
         private IEnumerator AutoRollAfterDelay()
@@ -1116,20 +1170,87 @@ namespace ElementalLudo.Gameplay
                 movingPlayer,
                 players,
                 movingToken,
-                new LudoRulesContext(elementalModeEnabled));
+                BuildRulesContext());
 
             foreach (Token token in captured)
             {
+                captureHappenedThisTurn = true;
+                string attacker =
+                    $"Token {SpanishColorName(movingToken.OwnerStyle.PlayerId)} {movingToken.TokenId}";
+                string victim =
+                    $"Token {SpanishColorName(token.OwnerStyle.PlayerId)} {token.TokenId}";
+
+                if (settings.Permadeath)
+                {
+                    // Gone for good: hiding the object also takes its collider
+                    // out of the way, so it can no longer be clicked.
+                    boardState.SetEliminated(token);
+                    token.gameObject.SetActive(false);
+                    statusMessage = $"{movingToken.name} destroyed {token.name}!";
+                    LogMove($"{attacker} ELIMINA a {victim}. No volverá.");
+                    continue;
+                }
+
                 boardState.SetHome(token);
                 token.transform.position = homePositions[token];
                 token.SetInteractionState(TokenInteractionState.Normal);
-                captureHappenedThisTurn = true;
-                statusMessage =
-                    $"{movingToken.name} captured {token.name}!";
-                LogMove(
-                    $"Token {SpanishColorName(movingToken.OwnerStyle.PlayerId)} {movingToken.TokenId} " +
-                    $"captura a Token {SpanishColorName(token.OwnerStyle.PlayerId)} {token.TokenId}.");
+                statusMessage = $"{movingToken.name} captured {token.name}!";
+                LogMove($"{attacker} captura a {victim}.");
             }
+        }
+
+        /// <summary>
+        /// Hardcore bookkeeping after a permanent capture. Ends the match if
+        /// the player is wiped out, or if only one seat still has tokens.
+        /// Returns whether the match ended.
+        /// </summary>
+        private bool TryResolveEliminations()
+        {
+            if (humanSeatIndex >= 0 &&
+                LudoMovementRules.IsEliminated(boardState, players[humanSeatIndex].Tokens))
+            {
+                EndGameAsDefeat();
+                return true;
+            }
+
+            LudoPlayerState survivor = null;
+            int aliveCount = 0;
+            foreach (LudoPlayerState player in players)
+            {
+                if (!LudoMovementRules.IsEliminated(boardState, player.Tokens))
+                {
+                    aliveCount++;
+                    survivor = player;
+                }
+            }
+
+            if (aliveCount == 1 && survivor != null)
+            {
+                EndGame(survivor);
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Hardcore loss: nobody won, the player simply ran out of tokens.
+        /// </summary>
+        private void EndGameAsDefeat()
+        {
+            humanDefeated = true;
+            winner = null;
+            CancelPendingDecisions();
+            legalActions.Clear();
+            ClearReachableCells();
+            rolledValue = 0;
+            actionPerformed = true;
+            selectedToken = null;
+            phase = LudoTurnPhase.GameOver;
+            dice.SetRollEnabled(false);
+            SetTokenInteractionStates(false, true);
+            statusMessage = "You lost every token.";
+            LogMove("Te has quedado sin fichas. Fin de la partida.");
         }
 
         /// <summary>

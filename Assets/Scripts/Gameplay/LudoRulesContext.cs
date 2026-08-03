@@ -9,9 +9,16 @@ namespace ElementalLudo.Gameplay
     {
         public bool ElementalModeEnabled { get; }
 
-        public LudoRulesContext(bool elementalModeEnabled)
+        /// <summary>
+        /// Captured tokens are gone for good and a single token reaching the
+        /// goal wins, instead of needing all four.
+        /// </summary>
+        public bool PermadeathEnabled { get; }
+
+        public LudoRulesContext(bool elementalModeEnabled, bool permadeathEnabled = false)
         {
             ElementalModeEnabled = elementalModeEnabled;
+            PermadeathEnabled = permadeathEnabled;
         }
     }
 }

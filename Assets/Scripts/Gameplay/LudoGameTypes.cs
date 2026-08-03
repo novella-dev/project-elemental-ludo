@@ -18,11 +18,20 @@ namespace ElementalLudo.Gameplay
 
     public enum LudoGameMode
     {
-        /// <summary>One human plays all four colors.</summary>
-        HotSeat,
+        /// <summary>Plain parchís against the AI: classic board, no extras.</summary>
+        Classic,
 
-        /// <summary>Human picks an element; the other three seats are AI.</summary>
-        SinglePlayer
+        /// <summary>Current board and tokens; roguelike structure comes later.</summary>
+        Adventure,
+
+        /// <summary>
+        /// Captured tokens never come back, and a single token reaching the
+        /// goal is enough to win. Run out of tokens and you're out.
+        /// </summary>
+        Hardcore,
+
+        /// <summary>Local hot-seat: every colour is played by a person.</summary>
+        Multiplayer
     }
 
     public readonly struct LudoLegalAction
