@@ -31,6 +31,10 @@ namespace ElementalLudo.Board
         // Far enough that nothing on the board can drift into frame.
         private const float ArenaDistance = 500f;
         private const string DiceShaderName = "Elemental Ludo/Token";
+        private const string FloorShaderName = "Elemental Ludo/Board Vertex Color";
+
+        // Just behind the pieces, which stand at Z <= 0.
+        private const float FloorDepth = 0.1f;
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
 
         [Header("Layout")]
@@ -40,10 +44,20 @@ namespace ElementalLudo.Board
         [SerializeField] private float tokenSize = 1.8f;
 
         [Header("Camera")]
-        [SerializeField] private float cameraDistance = 20f;
-        [Tooltip("Half the visible height. Content spans about +/-6, so this leaves margin around it.")]
-        [SerializeField] private float cameraSize = 8.5f;
+        [SerializeField] private float cameraDistance = 18f;
+        [Tooltip("Degrees away from straight-on. Higher tilts further toward looking down at the ground.")]
+        [Range(0f, 70f)]
+        [SerializeField] private float cameraTilt = 38f;
+        [Tooltip("Perspective, not orthographic, so the far side genuinely reads as further away.")]
+        [SerializeField] private float cameraFieldOfView = 34f;
         [SerializeField] private Color background = new Color(0.05f, 0.05f, 0.09f);
+
+        [Header("Arena Floor")]
+        [SerializeField] private float floorRadius = 9f;
+        [SerializeField] private Color sandInner = new Color(0.62f, 0.45f, 0.26f);
+        [SerializeField] private Color sandOuter = new Color(0.44f, 0.30f, 0.16f);
+        [SerializeField] private Color wallColor = new Color(0.30f, 0.20f, 0.12f);
+        [SerializeField] private Color wallTop = new Color(0.46f, 0.33f, 0.21f);
 
         [Header("Dice Animation")]
         [Min(0.05f)]
@@ -64,6 +78,8 @@ namespace ElementalLudo.Board
         private GameObject defenderModel;
         private Material diceBodyMaterial;
         private Material dicePipMaterial;
+        private Material floorMaterial;
+        private GameObject floorObject;
 
         /// <summary>Where the arena sits, well away from the board.</summary>
         private Vector3 Origin => new Vector3(ArenaDistance, 0f, 0f);
@@ -78,9 +94,17 @@ namespace ElementalLudo.Board
 
             session = combatSession;
             EnsureRoot();
-            BuildSide(attackerDice, combatSession.Attacker.Dice.Count, -diceRowOffset);
-            BuildSide(defenderDice, combatSession.Defender.Dice.Count, diceRowOffset);
-            BuildCombatants(combatSession);
+            EnsureFloor();
+
+            // Laid out by who is watching, not by who attacks: the player is
+            // the defender half the time, and they should still be the side
+            // nearest the camera.
+            float attackerRow = combatSession.AttackerIsHuman
+                ? -diceRowOffset
+                : diceRowOffset;
+            BuildSide(attackerDice, combatSession.Attacker.Dice.Count, attackerRow);
+            BuildSide(defenderDice, combatSession.Defender.Dice.Count, -attackerRow);
+            BuildCombatants(combatSession, attackerRow);
             SyncDice(true);
             EnterArenaView();
         }
@@ -116,6 +140,7 @@ namespace ElementalLudo.Board
 
             DestroyGenerated(diceBodyMaterial);
             DestroyGenerated(dicePipMaterial);
+            DestroyGenerated(floorMaterial);
         }
 
         private static void DestroyGenerated(Object target)
@@ -151,16 +176,27 @@ namespace ElementalLudo.Board
                 };
                 cameraObject.transform.SetParent(root, false);
                 arenaCamera = cameraObject.AddComponent<Camera>();
-                arenaCamera.orthographic = true;
+                arenaCamera.orthographic = false;
                 arenaCamera.clearFlags = CameraClearFlags.SolidColor;
                 arenaCamera.backgroundColor = background;
             }
 
-            arenaCamera.orthographicSize = cameraSize;
-            // The dice show their value toward -Z, matching the board, so the
-            // camera has to sit on that side and look back along +Z.
-            arenaCamera.transform.position = Origin + new Vector3(0f, 0f, -cameraDistance);
-            arenaCamera.transform.rotation = Quaternion.LookRotation(Vector3.forward, Vector3.up);
+            arenaCamera.fieldOfView = cameraFieldOfView;
+
+            // Dice show their value toward -Z, matching the board, so the
+            // camera stays on that side. Tilting it down the -Y axis turns the
+            // XY plane the pieces stand on into visible ground, which is what
+            // gives the 2.5D read — and it puts the near side genuinely closer
+            // to the lens, so the player's own pieces sit forward.
+            float radians = cameraTilt * Mathf.Deg2Rad;
+            Vector3 offset = new Vector3(
+                0f,
+                -Mathf.Sin(radians) * cameraDistance,
+                -Mathf.Cos(radians) * cameraDistance);
+            arenaCamera.transform.position = Origin + offset;
+            arenaCamera.transform.rotation = Quaternion.LookRotation(
+                -offset.normalized,
+                new Vector3(0f, Mathf.Cos(radians), -Mathf.Sin(radians)));
             arenaCamera.enabled = true;
 
             // Two enabled cameras would both render; park the board's.
@@ -207,6 +243,117 @@ namespace ElementalLudo.Board
             rootObject.transform.SetParent(transform, false);
             rootObject.transform.position = Origin;
             root = rootObject.transform;
+        }
+
+        /// <summary>
+        /// The arena itself: a sandy oval with a raised wall around it, built
+        /// the same procedural vertex-coloured way as the board. Sits just
+        /// behind the pieces in Z, so with the camera tilted it reads as the
+        /// ground they're standing on.
+        /// </summary>
+        private void EnsureFloor()
+        {
+            if (floorObject != null)
+            {
+                return;
+            }
+
+            floorObject = new GameObject("ArenaFloor")
+            {
+                hideFlags = HideFlags.DontSave
+            };
+            floorObject.transform.SetParent(root, false);
+            floorObject.transform.localPosition = Vector3.zero;
+
+            List<Vector3> vertices = new List<Vector3>(512);
+            List<Color> colors = new List<Color>(512);
+            List<int> triangles = new List<int>(1024);
+
+            const int segments = 48;
+            const float squash = 0.72f;
+            float wallHeight = floorRadius * 0.16f;
+
+            // Ground: a fan from the middle out, darkening toward the edge.
+            for (int segment = 0; segment < segments; segment++)
+            {
+                float a0 = Mathf.PI * 2f * segment / segments;
+                float a1 = Mathf.PI * 2f * (segment + 1) / segments;
+
+                int first = vertices.Count;
+                vertices.Add(new Vector3(0f, 0f, FloorDepth));
+                vertices.Add(EllipsePoint(a0, floorRadius, squash, FloorDepth));
+                vertices.Add(EllipsePoint(a1, floorRadius, squash, FloorDepth));
+                colors.Add(sandInner);
+                colors.Add(sandOuter);
+                colors.Add(sandOuter);
+
+                triangles.Add(first);
+                triangles.Add(first + 2);
+                triangles.Add(first + 1);
+            }
+
+            // Wall: a band standing up out of the ground at the rim.
+            for (int segment = 0; segment < segments; segment++)
+            {
+                float a0 = Mathf.PI * 2f * segment / segments;
+                float a1 = Mathf.PI * 2f * (segment + 1) / segments;
+
+                Vector3 low0 = EllipsePoint(a0, floorRadius, squash, FloorDepth);
+                Vector3 low1 = EllipsePoint(a1, floorRadius, squash, FloorDepth);
+                Vector3 high0 = EllipsePoint(a0, floorRadius * 1.08f, squash, FloorDepth - wallHeight);
+                Vector3 high1 = EllipsePoint(a1, floorRadius * 1.08f, squash, FloorDepth - wallHeight);
+
+                int first = vertices.Count;
+                vertices.Add(low0);
+                vertices.Add(low1);
+                vertices.Add(high1);
+                vertices.Add(high0);
+                colors.Add(wallColor);
+                colors.Add(wallColor);
+                colors.Add(wallTop);
+                colors.Add(wallTop);
+
+                triangles.Add(first);
+                triangles.Add(first + 2);
+                triangles.Add(first + 1);
+                triangles.Add(first);
+                triangles.Add(first + 3);
+                triangles.Add(first + 2);
+            }
+
+            Mesh mesh = new Mesh
+            {
+                name = "ArenaFloor",
+                hideFlags = HideFlags.DontSave
+            };
+            mesh.SetVertices(vertices);
+            mesh.SetColors(colors);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateBounds();
+            floorObject.AddComponent<MeshFilter>().sharedMesh = mesh;
+
+            MeshRenderer meshRenderer = floorObject.AddComponent<MeshRenderer>();
+            meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
+            meshRenderer.receiveShadows = false;
+
+            Shader shader = Shader.Find(FloorShaderName);
+            if (shader != null)
+            {
+                floorMaterial = new Material(shader)
+                {
+                    name = "Arena Floor",
+                    hideFlags = HideFlags.DontSave
+                };
+                meshRenderer.sharedMaterial = floorMaterial;
+            }
+        }
+
+        private static Vector3 EllipsePoint(float angle, float radius, float squash, float depth)
+        {
+            return new Vector3(
+                Mathf.Cos(angle) * radius,
+                Mathf.Sin(angle) * radius * squash,
+                depth);
         }
 
         private void BuildSide(List<ArenaDie> dice, int count, float rowY)
@@ -309,16 +456,17 @@ namespace ElementalLudo.Board
             return material;
         }
 
-        private void BuildCombatants(LudoCombatSession combatSession)
+        private void BuildCombatants(LudoCombatSession combatSession, float attackerRow)
         {
+            float sign = Mathf.Sign(attackerRow);
             attackerModel = ReplaceCombatant(
                 attackerModel,
                 combatSession.AttackerToken,
-                -tokenRowOffset);
+                tokenRowOffset * sign);
             defenderModel = ReplaceCombatant(
                 defenderModel,
                 combatSession.DefenderToken,
-                tokenRowOffset);
+                -tokenRowOffset * sign);
         }
 
         private GameObject ReplaceCombatant(GameObject existing, Token token, float rowY)
@@ -394,7 +542,11 @@ namespace ElementalLudo.Board
 
             if (TryGetWorldBounds(model, out bounds))
             {
-                model.transform.position += holder.position - bounds.center;
+                // Centre on the holder, then lift so the model rests on the
+                // arena floor instead of being buried half-way into it.
+                Vector3 target = holder.position;
+                target.z = FloorDepth - bounds.size.z * 0.5f;
+                model.transform.position += target - bounds.center;
             }
         }
 

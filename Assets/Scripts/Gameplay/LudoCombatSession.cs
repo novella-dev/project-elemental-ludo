@@ -108,7 +108,11 @@ namespace ElementalLudo.Gameplay
 
         public LudoCombatReport BuildReport()
         {
-            return new LudoCombatReport(AttackerToken, DefenderToken, BuildOutcome());
+            return new LudoCombatReport(
+                AttackerToken,
+                DefenderToken,
+                BuildOutcome(),
+                AttackerIsHuman);
         }
     }
 }

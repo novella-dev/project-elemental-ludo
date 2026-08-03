@@ -303,7 +303,10 @@ namespace ElementalLudo.Gameplay
                     height),
                 panelStyle);
 
-            if (session == null)
+            // Resolved but not yet cleared counts as over: the session lingers
+            // through the result display, so testing for null alone would keep
+            // showing the in-progress view the whole time.
+            if (session == null || session.Phase == LudoCombatPhase.Resolved)
             {
                 DrawCombatScoreLine(attackerToken, report.Outcome.Attacker, "ATACANTE", false);
                 DrawCombatScoreLine(defenderToken, report.Outcome.Defender, "DEFENSOR", false);
@@ -409,17 +412,18 @@ namespace ElementalLudo.Gameplay
         }
 
 
+        /// <summary>
+        /// Called from the player's point of view, which isn't the same as the
+        /// attacker's: losing a duel you defended is a win for you.
+        /// </summary>
         private void DrawCombatVerdict(LudoCombatReport report)
         {
-            Token winner = report.Outcome.AttackerWins
-                ? report.Attacker
-                : report.Defender;
-            string verdict = report.Outcome.AttackerWins ? "¡Captura!" : "Rechazado";
+            GUILayout.Label(report.HumanWon ? "VICTORIA" : "DERROTA", winnerStyle);
             GUILayout.Label(
-                $"{verdict}  —  gana " +
-                $"{LudoGameController.SpanishColorName(winner.OwnerStyle.PlayerId)} " +
-                $"{winner.TokenId}",
-                winnerStyle);
+                report.Outcome.AttackerWins
+                    ? "La captura se consuma."
+                    : "El atacante es rechazado.",
+                hintStyle);
         }
 
         private void DrawElementalRulesPanel()

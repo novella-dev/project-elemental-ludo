@@ -75,15 +75,27 @@ namespace ElementalLudo.Gameplay
         public Token Defender { get; }
         public LudoCombatOutcome Outcome { get; }
 
+        /// <summary>
+        /// Which side the player was on. Needed to call the result a win or a
+        /// loss, since losing as the defender and losing as the attacker are
+        /// opposite outcomes of the same flag.
+        /// </summary>
+        public bool AttackerIsHuman { get; }
+
         public LudoCombatReport(
             Token attacker,
             Token defender,
-            LudoCombatOutcome outcome)
+            LudoCombatOutcome outcome,
+            bool attackerIsHuman = false)
         {
             Attacker = attacker;
             Defender = defender;
             Outcome = outcome;
+            AttackerIsHuman = attackerIsHuman;
         }
+
+        /// <summary>True when the result went the player's way.</summary>
+        public bool HumanWon => AttackerIsHuman == Outcome.AttackerWins;
     }
 
     /// <summary>
