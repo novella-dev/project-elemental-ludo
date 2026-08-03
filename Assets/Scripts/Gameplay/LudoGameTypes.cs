@@ -39,15 +39,18 @@ namespace ElementalLudo.Gameplay
         public Token Token { get; }
         public LudoActionType Type { get; }
         public int DestinationRouteIndex { get; }
+        public int MoveDistance { get; }
 
         public LudoLegalAction(
             Token token,
             LudoActionType type,
-            int destinationRouteIndex)
+            int destinationRouteIndex,
+            int moveDistance)
         {
             Token = token;
             Type = type;
             DestinationRouteIndex = destinationRouteIndex;
+            MoveDistance = moveDistance;
         }
     }
 }

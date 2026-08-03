@@ -128,10 +128,10 @@ namespace ElementalLudo.Gameplay
                 LudoGameController.DisplayName(controller.ActivePlayer.PlayerId),
                 playerNameStyle);
 
-            if (controller.RolledValue > 0)
+            if (controller.ActionMoveDistance > 0)
             {
                 GUILayout.FlexibleSpace();
-                GUILayout.Label(controller.RolledValue.ToString(), badgeStyle, GUILayout.Width(34f), GUILayout.Height(34f));
+                GUILayout.Label(controller.ActionMoveDistance.ToString(), badgeStyle, GUILayout.Width(34f), GUILayout.Height(34f));
             }
 
             GUILayout.EndHorizontal();
@@ -571,7 +571,8 @@ namespace ElementalLudo.Gameplay
                 LudoLegalAction action = controller.LegalActions[index];
                 string description = action.Type == LudoActionType.LeaveHome
                     ? $"Take {action.Token.name} out of Home"
-                    : $"Move {action.Token.name}  ·  {controller.RolledValue} spaces";
+                    : $"Move {action.Token.name}  ·  " +
+                      $"{controller.GetActionMoveDistance(action)} spaces";
 
                 GUILayout.BeginHorizontal();
                 GUILayout.Box(string.Empty, MakeAccentStyle(playerColor), GUILayout.Width(4f), GUILayout.Height(30f));

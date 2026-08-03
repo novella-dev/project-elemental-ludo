@@ -43,6 +43,7 @@ namespace ElementalLudo.Gameplay
                         results.Add(new LudoLegalAction(
                             token,
                             LudoActionType.LeaveHome,
+                            0,
                             0));
                     }
 
@@ -74,8 +75,69 @@ namespace ElementalLudo.Gameplay
                         results.Add(new LudoLegalAction(
                             token,
                             LudoActionType.Move,
-                            destination));
+                            destination,
+                            moveDistance));
                     }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Calculates the legal choices for an indivisible capture or goal
+        /// bonus. Only tokens already on the track are candidates: a bonus
+        /// can never take a token out of Home, and Finished tokens cannot
+        /// move again. Elemental distance and barrier-bypass abilities do
+        /// not alter a counted 10/20-space reward.
+        /// </summary>
+        public static void CalculateBonusActions(
+            BoardState boardState,
+            LudoPlayerState activePlayer,
+            IReadOnlyList<LudoPlayerState> allPlayers,
+            int moveDistance,
+            LudoRulesContext context,
+            List<LudoLegalAction> results)
+        {
+            results.Clear();
+
+            // A counted bonus must respect every barrier, including when the
+            // moving element is Water. Keep permadeath only for consistency;
+            // barrier validation itself does not use that flag.
+            LudoRulesContext barrierContext =
+                new LudoRulesContext(false, context.PermadeathEnabled);
+
+            foreach (Token token in activePlayer.Tokens)
+            {
+                TokenState state = boardState.GetState(token);
+                int routeIndex = boardState.GetRouteIndex(token);
+                if (!LudoMovementRules.TryGetDestination(
+                        state,
+                        routeIndex,
+                        moveDistance,
+                        activePlayer.Route.Length,
+                        out int destination))
+                {
+                    continue;
+                }
+
+                Vector2Int destinationCell = activePlayer.Route[destination];
+                bool destinationIsCenter =
+                    destination == activePlayer.Route.Length - 1;
+                if (!IsPathBlocked(
+                        boardState,
+                        allPlayers,
+                        activePlayer.Route,
+                        routeIndex + 1,
+                        destination,
+                        barrierContext,
+                        activePlayer.Element) &&
+                    (destinationIsCenter ||
+                     !IsCellFull(boardState, allPlayers, destinationCell)))
+                {
+                    results.Add(new LudoLegalAction(
+                        token,
+                        LudoActionType.Move,
+                        destination,
+                        moveDistance));
                 }
             }
         }

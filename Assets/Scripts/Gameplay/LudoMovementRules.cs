@@ -7,6 +7,8 @@ namespace ElementalLudo.Gameplay
     {
         public const int HomeExitRoll = 5;
         public const int TokensRequiredToWin = 4;
+        public const int CaptureBonusDistance = 20;
+        public const int GoalBonusDistance = 10;
 
         public static bool CanLeaveHome(TokenState state, int rolledValue)
         {
@@ -14,10 +16,9 @@ namespace ElementalLudo.Gameplay
         }
 
         /// <summary>
-        /// <paramref name="moveDistance"/> is normally a 1-6 dice roll, but
-        /// callers may pass up to 7 to account for the Lightning element's
-        /// +1 effective distance (Fase 1) — this function just validates a
-        /// distance and applies it, it doesn't know why it's 7.
+        /// Validates one indivisible forward movement. The distance can come
+        /// from the die, an elemental modifier, or a capture/goal bonus; this
+        /// function deliberately does not care where it came from.
         /// </summary>
         public static bool TryGetDestination(
             TokenState state,
@@ -30,7 +31,6 @@ namespace ElementalLudo.Gameplay
             if (state != TokenState.Track ||
                 currentRouteIndex < 0 ||
                 moveDistance < 1 ||
-                moveDistance > 7 ||
                 routeLength <= 0)
             {
                 return false;
