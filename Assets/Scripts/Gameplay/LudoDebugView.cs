@@ -55,6 +55,7 @@ namespace ElementalLudo.Gameplay
         private GUIStyle accentBarStyle;
         private GUIStyle actionCardStyle;
         private GUIStyle primaryButtonStyle;
+        private GUIStyle endMatchButtonStyle;
         private GUIStyle toggleOnStyle;
         private GUIStyle toggleOffStyle;
         private GUIStyle winnerStyle;
@@ -125,6 +126,8 @@ namespace ElementalLudo.Gameplay
             DrawPhaseContent(playerColor);
 
             GUILayout.EndArea();
+
+            DrawEndMatchButton();
 
             if (controller.ElementalModeEnabled)
             {
@@ -231,6 +234,34 @@ namespace ElementalLudo.Gameplay
             {
                 controller.ElementalModeEnabled = !controller.ElementalModeEnabled;
             }
+        }
+
+        /// <summary>
+        /// Quits back to the start menu from mid-match, not just from the
+        /// game-over screen — mainly so switching modes to test doesn't need
+        /// a full close-and-reopen of the Editor each time.
+        /// </summary>
+        private void DrawEndMatchButton()
+        {
+            const float width = 220f;
+            const float height = 44f;
+
+            GUILayout.BeginArea(
+                new Rect(
+                    (Screen.width - width) * 0.5f,
+                    Screen.height - height - PanelMargin,
+                    width,
+                    height));
+
+            if (GUILayout.Button(
+                    "Finalizar Partida",
+                    endMatchButtonStyle,
+                    GUILayout.Height(height)))
+            {
+                controller.ReturnToMenu();
+            }
+
+            GUILayout.EndArea();
         }
 
         private void DrawElementalRulesPanel()
@@ -769,6 +800,24 @@ namespace ElementalLudo.Gameplay
                 hover =
                 {
                     background = GetSolidTexture(new Color(0.27f, 0.8f, 0.48f, 0.95f)),
+                    textColor = Color.white
+                }
+            };
+
+            endMatchButtonStyle = new GUIStyle(GUI.skin.button)
+            {
+                fontSize = 13,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                padding = new RectOffset(16, 16, 10, 10),
+                normal =
+                {
+                    background = GetSolidTexture(new Color(0.72f, 0.2f, 0.2f, 0.9f)),
+                    textColor = Color.white
+                },
+                hover =
+                {
+                    background = GetSolidTexture(new Color(0.82f, 0.26f, 0.26f, 0.9f)),
                     textColor = Color.white
                 }
             };
