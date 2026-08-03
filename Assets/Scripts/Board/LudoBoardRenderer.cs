@@ -15,13 +15,13 @@ namespace ElementalLudo.Board
         private const int CellLabelCount = 68;
         private const int CellLabelStartIndex = LudoBoardRoutes.CellLabelStartIndex;
 
-        private static readonly Color BoardWhite = new Color32(248, 247, 242, 255);
-        private static readonly Color GridColor = new Color32(73, 78, 78, 255);
-        private static readonly Color Red = new Color32(211, 17, 54, 255);
-        private static readonly Color Blue = new Color32(62, 158, 207, 255);
-        private static readonly Color Green = new Color32(10, 105, 72, 255);
-        private static readonly Color Yellow = new Color32(242, 211, 62, 255);
-        private static readonly Color SafeCell = new Color32(118, 125, 125, 92);
+        private static readonly Color BoardWhite = LudoBoardVisualStyle.Paper;
+        private static readonly Color GridColor = LudoBoardVisualStyle.Ink;
+        private static readonly Color Red = LudoBoardVisualStyle.Red;
+        private static readonly Color Blue = LudoBoardVisualStyle.Blue;
+        private static readonly Color Green = LudoBoardVisualStyle.Green;
+        private static readonly Color Yellow = LudoBoardVisualStyle.Yellow;
+        private static readonly Color SafeCell = LudoBoardVisualStyle.SafeCellOverlay;
 
         private readonly List<Vector3> vertices = new List<Vector3>(8192);
         private readonly List<Color> colors = new List<Color>(8192);
@@ -83,6 +83,7 @@ namespace ElementalLudo.Board
             boardMesh.SetColors(colors);
             boardMesh.SetTriangles(triangles, 0);
             boardMesh.RecalculateBounds();
+            boardMesh.RecalculateNormals();
 
             MeshFilter meshFilter = GetComponent<MeshFilter>();
             meshFilter.sharedMesh = boardMesh;
@@ -199,7 +200,9 @@ namespace ElementalLudo.Board
                 textMesh.anchor = TextAnchor.MiddleCenter;
                 textMesh.alignment = TextAlignment.Center;
                 textMesh.characterSize = 0.18f;
-                textMesh.color = new Color(0.10f, 0.10f, 0.10f, 0.85f);
+                Color labelColor = GridColor;
+                labelColor.a = 0.84f;
+                textMesh.color = labelColor;
                 textMesh.fontStyle = FontStyle.Bold;
                 textMesh.offsetZ = 0f;
 
@@ -246,28 +249,30 @@ namespace ElementalLudo.Board
 
         private static Color SandColor(float x, float y)
         {
-            const float noiseScale = 3.5f;
+            const float noiseScale = 0.18f;
             float n0 = Mathf.PerlinNoise(x * noiseScale, y * noiseScale);
-            float n1 = Mathf.PerlinNoise(x * noiseScale * 2f + 5.3f,
-                                        y * noiseScale * 2f + 7.1f);
-            float n2 = Mathf.PerlinNoise(x * noiseScale * 4f + 13.7f,
-                                        y * noiseScale * 4f + 11.3f);
-            float noise = n0 * 0.5f + n1 * 0.3f + n2 * 0.2f;
+            float n1 = Mathf.PerlinNoise(
+                x * noiseScale * 0.55f + 5.3f,
+                y * noiseScale * 0.55f + 7.1f);
+            float noise = n0 * 0.62f + n1 * 0.38f;
 
-            Color sandBase = new Color(0.85f, 0.76f, 0.58f);
-            float variation = (noise - 0.5f) * 0.06f;
-            return new Color(
-                Mathf.Clamp01(sandBase.r + variation),
-                Mathf.Clamp01(sandBase.g + variation),
-                Mathf.Clamp01(sandBase.b + variation),
-                1f);
+            // Broad, discrete colour islands read like painted animation
+            // backgrounds instead of photographic sand noise.
+            if (noise < 0.43f)
+            {
+                return LudoBoardVisualStyle.SandDark;
+            }
+
+            return noise < 0.61f
+                ? LudoBoardVisualStyle.SandMid
+                : LudoBoardVisualStyle.SandLight;
         }
 
         private void DrawBoard()
         {
             const float outerEdge = 9.5f;
             const float centerEdge = 1.5f;
-            const float lineWidth = 0.025f;
+            const float lineWidth = LudoBoardVisualStyle.GridLineWidth;
 
             AddRect(-9.68f, -9.68f, 9.68f, 9.68f, GridColor, 0.08f);
             if (classicBoard)
@@ -461,7 +466,7 @@ namespace ElementalLudo.Board
                 worldCenter,
                 0.30f,
                 0.275f,
-                new Color(GridColor.r, GridColor.g, GridColor.b, 0.32f),
+                new Color(GridColor.r, GridColor.g, GridColor.b, 0.88f),
                 -0.06f);
         }
 
@@ -523,7 +528,7 @@ namespace ElementalLudo.Board
 
         private static Color Lighten(Color color)
         {
-            return Color.Lerp(color, Color.white, 0.22f);
+            return LudoBoardVisualStyle.Lighten(color);
         }
 
         private void AddRect(float xMin, float yMin, float xMax, float yMax, Color color, float depth)
@@ -558,7 +563,9 @@ namespace ElementalLudo.Board
 
         private void AddLine(Vector2 start, Vector2 end, float width, Color color, float depth)
         {
-            Vector2 direction = end - start;
+            Vector2 worldStart = LudoBoardLayout.ToWorld(start);
+            Vector2 worldEnd = LudoBoardLayout.ToWorld(end);
+            Vector2 direction = worldEnd - worldStart;
             if (direction.sqrMagnitude <= Mathf.Epsilon)
             {
                 return;
@@ -567,10 +574,22 @@ namespace ElementalLudo.Board
             Vector2 offset = new Vector2(-direction.y, direction.x).normalized * (width * 0.5f);
             int firstVertex = vertices.Count;
 
-            vertices.Add(ToVector3(start - offset, depth));
-            vertices.Add(ToVector3(end - offset, depth));
-            vertices.Add(ToVector3(end + offset, depth));
-            vertices.Add(ToVector3(start + offset, depth));
+            vertices.Add(new Vector3(
+                worldStart.x - offset.x,
+                worldStart.y - offset.y,
+                depth));
+            vertices.Add(new Vector3(
+                worldEnd.x - offset.x,
+                worldEnd.y - offset.y,
+                depth));
+            vertices.Add(new Vector3(
+                worldEnd.x + offset.x,
+                worldEnd.y + offset.y,
+                depth));
+            vertices.Add(new Vector3(
+                worldStart.x + offset.x,
+                worldStart.y + offset.y,
+                depth));
             AddColors(color, 4);
 
             triangles.Add(firstVertex);

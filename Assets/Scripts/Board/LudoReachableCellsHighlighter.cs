@@ -66,6 +66,7 @@ namespace ElementalLudo.Board
             highlightMesh.SetVertices(vertices);
             highlightMesh.SetColors(colors);
             highlightMesh.SetTriangles(triangles, 0);
+            highlightMesh.RecalculateNormals();
             highlightMesh.RecalculateBounds();
         }
 
