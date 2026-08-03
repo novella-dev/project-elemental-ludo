@@ -500,13 +500,31 @@ namespace ElementalLudo.Gameplay
 
         private void DrawGameOver()
         {
-            GUILayout.Label(
-                $"{LudoGameController.DisplayName(controller.Winner.PlayerId)} WINS!",
-                winnerStyle);
+            // Hardcore can end with no winner at all: the player simply ran
+            // out of tokens, so Winner is null here.
+            if (controller.HumanDefeated)
+            {
+                GUILayout.Label("HAS PERDIDO", winnerStyle);
+                GUILayout.Label("Te quedaste sin fichas.", hintStyle);
+            }
+            else if (controller.Winner != null)
+            {
+                string colour = LudoGameController
+                    .SpanishColorName(controller.Winner.PlayerId)
+                    .ToUpperInvariant();
+                GUILayout.Label($"¡GANA {colour}!", winnerStyle);
+            }
+
             GUILayout.Space(10f);
-            if (GUILayout.Button("Play Again", primaryButtonStyle))
+            if (GUILayout.Button("Jugar otra vez", primaryButtonStyle))
             {
                 controller.RestartGame();
+            }
+
+            GUILayout.Space(4f);
+            if (GUILayout.Button("Volver al menú", actionCardStyle))
+            {
+                controller.ReturnToMenu();
             }
         }
 

@@ -246,6 +246,29 @@ namespace ElementalLudo.Gameplay
         }
 
         /// <summary>
+        /// Drops back to the start menu, abandoning the match in progress.
+        /// </summary>
+        public void ReturnToMenu()
+        {
+            if (!initialized)
+            {
+                return;
+            }
+
+            StopAllCoroutines();
+            dice.CancelRoll();
+            CancelPendingDecisions();
+
+            awaitingSetup = true;
+            phase = LudoTurnPhase.AwaitingRoll;
+            selectedToken = null;
+            legalActions.Clear();
+            ClearReachableCells();
+            dice.SetRollEnabled(false);
+            statusMessage = "Elige un modo de juego.";
+        }
+
+        /// <summary>
         /// Begins a match. Hot-seat gives every seat to the human; the rest
         /// give one seat to the human and the others to the AI.
         /// </summary>
