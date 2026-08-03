@@ -112,6 +112,15 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
+            // A duel owns the screen: the board panels are about a board the
+            // camera isn't even looking at, so they'd just be clutter on top
+            // of the arena.
+            if (controller.IsCombatVisible)
+            {
+                DrawCombatPanel();
+                return;
+            }
+
             Color playerColor = controller.ActivePlayer.TokenColor;
 
             GUILayout.BeginArea(
@@ -128,11 +137,6 @@ namespace ElementalLudo.Gameplay
             GUILayout.EndArea();
 
             DrawEndMatchButton();
-
-            if (controller.IsCombatVisible)
-            {
-                DrawCombatPanel();
-            }
 
             if (controller.ElementalModeEnabled)
             {
@@ -276,8 +280,8 @@ namespace ElementalLudo.Gameplay
         /// </summary>
         private void DrawCombatPanel()
         {
-            const float width = 520f;
-            const float height = 360f;
+            const float width = 700f;
+            const float height = 190f;
 
             LudoCombatSession session = controller.CombatSession;
             LudoCombatReport report = controller.CombatReport;
@@ -288,57 +292,122 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
+            // A strip along the bottom, not a centred box: the dice and the
+            // combatants are the point now that they exist in 3D, and a panel
+            // in the middle would sit right on top of them.
             GUILayout.BeginArea(
                 new Rect(
                     (Screen.width - width) * 0.5f,
-                    (Screen.height - height) * 0.5f,
+                    Screen.height - height - PanelMargin,
                     width,
                     height),
                 panelStyle);
 
-            GUILayout.Label("DUELO DE DADOS", titleStyle);
-            GUILayout.Space(8f);
-
             if (session == null)
             {
-                // Duel over: only the final scores are left to show.
-                DrawCombatSide(attackerToken, report.Outcome.Attacker, "ATACANTE");
-                GUILayout.Space(6f);
-                DrawCombatSide(defenderToken, report.Outcome.Defender, "DEFENSOR");
-                GUILayout.Space(12f);
+                DrawCombatScoreLine(attackerToken, report.Outcome.Attacker, "ATACANTE", false);
+                DrawCombatScoreLine(defenderToken, report.Outcome.Defender, "DEFENSOR", false);
+                GUILayout.Space(8f);
                 DrawCombatVerdict(report);
                 GUILayout.EndArea();
                 return;
             }
 
-            DrawCombatLiveSide(
-                session,
+            bool attackerActive = session.Phase == LudoCombatPhase.AttackerTurn;
+            DrawCombatScoreLine(
                 attackerToken,
-                session.Attacker,
+                session.Attacker.Evaluate(),
                 "ATACANTE",
-                LudoCombatPhase.AttackerTurn);
-            GUILayout.Space(8f);
+                attackerActive);
 
-            if (session.Phase == LudoCombatPhase.AttackerTurn)
+            if (attackerActive)
             {
-                GUILayout.Label("El defensor espera su turno...", hintStyle);
+                GUILayout.Label("DEFENSOR  ·  esperando su turno", hintStyle);
             }
             else
             {
-                DrawCombatLiveSide(
-                    session,
+                DrawCombatScoreLine(
                     defenderToken,
-                    session.Defender,
+                    session.Defender.Evaluate(),
                     "DEFENSOR",
-                    LudoCombatPhase.DefenderTurn);
-                GUILayout.Space(4f);
+                    true);
                 GUILayout.Label(
                     $"Necesita superar {session.ScoreToBeat} para resistir.",
                     hintStyle);
             }
 
+            GUILayout.Space(6f);
+            DrawCombatControls(session);
             GUILayout.EndArea();
         }
+
+        /// <summary>One side's running total, marked when it's their turn.</summary>
+        private void DrawCombatScoreLine(
+            Token token,
+            LudoCombatRoll roll,
+            string role,
+            bool isActive)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Box(
+                string.Empty,
+                MakeAccentStyle(token.OwnerStyle.TokenColor),
+                GUILayout.Width(5f),
+                GUILayout.Height(22f));
+            GUILayout.Space(8f);
+            GUILayout.Label(
+                $"{role}  {LudoGameController.SpanishColorName(token.OwnerStyle.PlayerId)} " +
+                $"{token.TokenId}" + (isActive ? "  ←" : string.Empty),
+                sectionLabelStyle,
+                GUILayout.Width(190f));
+            GUILayout.Label(LudoCombatInfo.Describe(roll), ruleTitleStyle);
+            GUILayout.EndHorizontal();
+        }
+
+        /// <summary>
+        /// Reroll controls for the human. The dice are numbered rather than
+        /// redrawn, since the real ones are on screen in front of the player;
+        /// the numbers just map left to right onto them.
+        /// </summary>
+        private void DrawCombatControls(LudoCombatSession session)
+        {
+            if (!session.IsHumanTurn)
+            {
+                GUILayout.Label("El rival está decidiendo sus relanzamientos...", statusStyle);
+                return;
+            }
+
+            LudoCombatHand hand = session.CurrentHand;
+            GUILayout.Label(
+                hand.CanReroll
+                    ? $"Tu turno — relanzamientos restantes: {hand.RerollsLeft}"
+                    : "Tu turno — sin relanzamientos",
+                statusStyle);
+
+            GUILayout.BeginHorizontal();
+            for (int index = 0; index < hand.Dice.Count; index++)
+            {
+                GUI.enabled = hand.CanReroll;
+                if (GUILayout.Button(
+                        $"{index + 1}º: {hand.Dice[index]}",
+                        actionCardStyle,
+                        GUILayout.Width(74f)))
+                {
+                    controller.RequestCombatReroll(index);
+                }
+
+                GUI.enabled = true;
+            }
+
+            GUILayout.Space(12f);
+            if (GUILayout.Button("Plantarse", primaryButtonStyle, GUILayout.Width(140f)))
+            {
+                controller.ConfirmCombatHand();
+            }
+
+            GUILayout.EndHorizontal();
+        }
+
 
         private void DrawCombatVerdict(LudoCombatReport report)
         {
@@ -351,111 +420,6 @@ namespace ElementalLudo.Gameplay
                 $"{LudoGameController.SpanishColorName(winner.OwnerStyle.PlayerId)} " +
                 $"{winner.TokenId}",
                 winnerStyle);
-        }
-
-        /// <summary>
-        /// A side mid-duel. Its dice become buttons while it's this side's
-        /// turn and a human is deciding — clicking one spends a reroll on it.
-        /// </summary>
-        private void DrawCombatLiveSide(
-            LudoCombatSession session,
-            Token token,
-            LudoCombatHand hand,
-            string role,
-            LudoCombatPhase phase)
-        {
-            bool isActiveSide = session.Phase == phase;
-            bool playerDecides = isActiveSide && session.IsHumanTurn;
-            LudoCombatRoll roll = hand.Evaluate();
-
-            GUILayout.BeginHorizontal();
-            GUILayout.Box(
-                string.Empty,
-                MakeAccentStyle(token.OwnerStyle.TokenColor),
-                GUILayout.Width(5f),
-                GUILayout.Height(58f));
-            GUILayout.Space(8f);
-            GUILayout.BeginVertical();
-
-            GUILayout.Label(
-                $"{role}  ·  " +
-                $"{LudoGameController.SpanishColorName(token.OwnerStyle.PlayerId)} " +
-                $"{token.TokenId}" +
-                (isActiveSide ? "   ← su turno" : string.Empty),
-                sectionLabelStyle);
-
-            GUILayout.BeginHorizontal();
-            for (int index = 0; index < hand.Dice.Count; index++)
-            {
-                string face = hand.Dice[index].ToString();
-                if (playerDecides && hand.CanReroll)
-                {
-                    if (GUILayout.Button(face, actionCardStyle, GUILayout.Width(38f)))
-                    {
-                        controller.RequestCombatReroll(index);
-                    }
-                }
-                else
-                {
-                    GUILayout.Box(face, badgeStyle, GUILayout.Width(38f), GUILayout.Height(30f));
-                }
-            }
-
-            GUILayout.EndHorizontal();
-            GUILayout.Label(LudoCombatInfo.Describe(roll), ruleTitleStyle);
-
-            if (playerDecides)
-            {
-                GUILayout.Label(
-                    hand.CanReroll
-                        ? $"Toca un dado para relanzarlo. Te quedan {hand.RerollsLeft}."
-                        : "Sin relanzamientos.",
-                    hintStyle);
-                if (GUILayout.Button("Plantarse", primaryButtonStyle))
-                {
-                    controller.ConfirmCombatHand();
-                }
-            }
-
-            GUILayout.EndVertical();
-            GUILayout.EndHorizontal();
-        }
-
-        private void DrawCombatSide(Token token, LudoCombatRoll roll, string role)
-        {
-            GUILayout.BeginHorizontal();
-            GUILayout.Box(
-                string.Empty,
-                MakeAccentStyle(token.OwnerStyle.TokenColor),
-                GUILayout.Width(5f),
-                GUILayout.Height(40f));
-            GUILayout.Space(8f);
-            GUILayout.BeginVertical();
-            GUILayout.Label(
-                $"{role}  ·  " +
-                $"{LudoGameController.SpanishColorName(token.OwnerStyle.PlayerId)} " +
-                $"{token.TokenId}",
-                sectionLabelStyle);
-            GUILayout.Label(FormatDice(roll), ruleTitleStyle);
-            GUILayout.Label(LudoCombatInfo.Describe(roll), hintStyle);
-            GUILayout.EndVertical();
-            GUILayout.EndHorizontal();
-        }
-
-        private static string FormatDice(LudoCombatRoll roll)
-        {
-            if (roll.Dice == null)
-            {
-                return string.Empty;
-            }
-
-            string dice = string.Empty;
-            foreach (int die in roll.Dice)
-            {
-                dice += dice.Length == 0 ? die.ToString() : $"  {die}";
-            }
-
-            return $"[ {dice} ]   = {roll.Pips}";
         }
 
         private void DrawElementalRulesPanel()

@@ -30,6 +30,8 @@ namespace ElementalLudo.Board
     {
         // Far enough that nothing on the board can drift into frame.
         private const float ArenaDistance = 500f;
+        private const string DiceShaderName = "Elemental Ludo/Token";
+        private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
 
         [Header("Layout")]
         [SerializeField] private float diceSpacing = 1.15f;
@@ -38,8 +40,9 @@ namespace ElementalLudo.Board
         [SerializeField] private float tokenSize = 1.8f;
 
         [Header("Camera")]
-        [SerializeField] private float cameraDistance = 14f;
-        [SerializeField] private float cameraSize = 6.2f;
+        [SerializeField] private float cameraDistance = 20f;
+        [Tooltip("Half the visible height. Content spans about +/-6, so this leaves margin around it.")]
+        [SerializeField] private float cameraSize = 8.5f;
         [SerializeField] private Color background = new Color(0.05f, 0.05f, 0.09f);
 
         [Header("Dice Animation")]
@@ -59,6 +62,8 @@ namespace ElementalLudo.Board
         private Transform root;
         private GameObject attackerModel;
         private GameObject defenderModel;
+        private Material diceBodyMaterial;
+        private Material dicePipMaterial;
 
         /// <summary>Where the arena sits, well away from the board.</summary>
         private Vector3 Origin => new Vector3(ArenaDistance, 0f, 0f);
@@ -107,6 +112,26 @@ namespace ElementalLudo.Board
             if (root != null)
             {
                 Destroy(root.gameObject);
+            }
+
+            DestroyGenerated(diceBodyMaterial);
+            DestroyGenerated(dicePipMaterial);
+        }
+
+        private static void DestroyGenerated(Object target)
+        {
+            if (target == null)
+            {
+                return;
+            }
+
+            if (Application.isPlaying)
+            {
+                Destroy(target);
+            }
+            else
+            {
+                DestroyImmediate(target);
             }
         }
 
@@ -224,12 +249,64 @@ namespace ElementalLudo.Board
             };
             visualObject.transform.SetParent(dieRoot.transform, false);
 
+            DiceVisual visual = visualObject.AddComponent<DiceVisual>();
+
+            // DiceVisual never assigns materials — the Dice prefab supplies
+            // them from the Inspector. Built at runtime it would keep Unity's
+            // default one, which renders magenta under URP, so it gets the
+            // pair its mesh expects: body first, pips second.
+            visualObject.GetComponent<MeshRenderer>().sharedMaterials =
+                new[] { GetDiceBodyMaterial(), GetDicePipMaterial() };
+
             return new ArenaDie
             {
                 Root = dieRoot.transform,
-                Visual = visualObject.AddComponent<DiceVisual>(),
+                Visual = visual,
                 Value = 0
             };
+        }
+
+        private Material GetDiceBodyMaterial()
+        {
+            if (diceBodyMaterial == null)
+            {
+                diceBodyMaterial = CreateDiceMaterial(
+                    "Combat Die Body",
+                    new Color(0.93f, 0.92f, 0.88f));
+            }
+
+            return diceBodyMaterial;
+        }
+
+        private Material GetDicePipMaterial()
+        {
+            if (dicePipMaterial == null)
+            {
+                dicePipMaterial = CreateDiceMaterial(
+                    "Combat Die Pips",
+                    new Color(0.035f, 0.04f, 0.045f));
+            }
+
+            return dicePipMaterial;
+        }
+
+        /// <summary>Matches the colours the LudoDiceMaterial assets carry.</summary>
+        private static Material CreateDiceMaterial(string name, Color color)
+        {
+            Shader shader = Shader.Find(DiceShaderName);
+            if (shader == null)
+            {
+                Debug.LogError($"CombatArena: shader '{DiceShaderName}' not found.");
+                return null;
+            }
+
+            Material material = new Material(shader)
+            {
+                name = name,
+                hideFlags = HideFlags.DontSave
+            };
+            material.SetColor(BaseColorId, color);
+            return material;
         }
 
         private void BuildCombatants(LudoCombatSession combatSession)
@@ -292,22 +369,21 @@ namespace ElementalLudo.Board
                 modelCollider.enabled = false;
             }
 
-            FitToSize(model);
+            FitToSize(model, parent);
             return model;
         }
 
-        private void FitToSize(GameObject model)
+        /// <summary>
+        /// Scales the model to a readable size and then drops it onto the
+        /// holder's position. The recentre matters: these are imported GLBs
+        /// whose pivots sit wherever the artist left them, and without it a
+        /// model can end up scaled correctly but far outside the frame.
+        /// </summary>
+        private void FitToSize(GameObject model, Transform holder)
         {
-            Renderer[] renderers = model.GetComponentsInChildren<Renderer>(true);
-            if (renderers.Length == 0)
+            if (!TryGetWorldBounds(model, out Bounds bounds))
             {
                 return;
-            }
-
-            Bounds bounds = renderers[0].bounds;
-            for (int index = 1; index < renderers.Length; index++)
-            {
-                bounds.Encapsulate(renderers[index].bounds);
             }
 
             float largest = Mathf.Max(bounds.size.x, Mathf.Max(bounds.size.y, bounds.size.z));
@@ -315,6 +391,29 @@ namespace ElementalLudo.Board
             {
                 model.transform.localScale *= tokenSize / largest;
             }
+
+            if (TryGetWorldBounds(model, out bounds))
+            {
+                model.transform.position += holder.position - bounds.center;
+            }
+        }
+
+        private static bool TryGetWorldBounds(GameObject model, out Bounds bounds)
+        {
+            bounds = default;
+            Renderer[] renderers = model.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length == 0)
+            {
+                return false;
+            }
+
+            bounds = renderers[0].bounds;
+            for (int index = 1; index < renderers.Length; index++)
+            {
+                bounds.Encapsulate(renderers[index].bounds);
+            }
+
+            return true;
         }
 
         // ------------------------------------------------------------------
