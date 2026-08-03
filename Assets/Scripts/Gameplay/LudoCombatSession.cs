@@ -30,6 +30,7 @@ namespace ElementalLudo.Gameplay
             Token defenderToken,
             bool attackerIsHuman,
             bool defenderIsHuman,
+            bool elementalRules,
             int diceCount = LudoCombatResolver.DefaultDiceCount,
             int rerolls = LudoCombatHand.DefaultRerolls)
         {
@@ -37,8 +38,23 @@ namespace ElementalLudo.Gameplay
             DefenderToken = defenderToken;
             AttackerIsHuman = attackerIsHuman;
             DefenderIsHuman = defenderIsHuman;
-            Attacker = new LudoCombatHand(diceCount, rerolls);
-            Defender = new LudoCombatHand(diceCount, rerolls);
+            ElementalRules = elementalRules;
+
+            // Worked out once, at the start: the matchup cannot change while
+            // the duel runs, and baking it into the hands keeps every later
+            // reading of the score consistent.
+            Attacker = new LudoCombatHand(
+                diceCount,
+                rerolls,
+                elementalRules
+                    ? LudoCombatResolver.ElementBonusFor(attackerToken, defenderToken)
+                    : 0);
+            Defender = new LudoCombatHand(
+                diceCount,
+                rerolls,
+                elementalRules
+                    ? LudoCombatResolver.ElementBonusFor(defenderToken, attackerToken)
+                    : 0);
             Phase = LudoCombatPhase.AttackerTurn;
         }
 
@@ -46,6 +62,9 @@ namespace ElementalLudo.Gameplay
         public Token DefenderToken { get; }
         public bool AttackerIsHuman { get; }
         public bool DefenderIsHuman { get; }
+
+        /// <summary>Whether the elemental layer is on for this match.</summary>
+        public bool ElementalRules { get; }
         public LudoCombatHand Attacker { get; }
         public LudoCombatHand Defender { get; }
         public LudoCombatPhase Phase { get; private set; }

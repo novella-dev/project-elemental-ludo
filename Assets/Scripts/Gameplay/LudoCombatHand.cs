@@ -18,16 +18,27 @@ namespace ElementalLudo.Gameplay
 
         public LudoCombatHand(
             int diceCount = LudoCombatResolver.DefaultDiceCount,
-            int rerolls = DefaultRerolls)
+            int rerolls = DefaultRerolls,
+            int elementBonus = 0)
         {
             dice = new int[Mathf.Max(1, diceCount)];
             RerollsLeft = Mathf.Max(0, rerolls);
+            ElementBonus = elementBonus;
             ThrowAll();
         }
 
         public IReadOnlyList<int> Dice => dice;
         public int RerollsLeft { get; private set; }
         public bool CanReroll => RerollsLeft > 0;
+
+        /// <summary>
+        /// The elemental edge this side carries into the duel, fixed for its
+        /// whole length. Held here rather than passed to <see cref="Evaluate"/>
+        /// so the score is right everywhere it is read — the arena and the
+        /// panel both call Evaluate with no arguments, and either could
+        /// otherwise show a total the fight is not actually using.
+        /// </summary>
+        public int ElementBonus { get; }
 
         /// <summary>Opening throw. Doesn't cost a reroll.</summary>
         public void ThrowAll()
@@ -76,7 +87,7 @@ namespace ElementalLudo.Gameplay
         {
             int[] snapshot = new int[dice.Length];
             System.Array.Copy(dice, snapshot, dice.Length);
-            return LudoCombatResolver.Evaluate(snapshot);
+            return LudoCombatResolver.Evaluate(snapshot, ElementBonus);
         }
     }
 }

@@ -29,6 +29,10 @@ namespace ElementalLudo.Gameplay
         public LudoDiceHand Hand { get; }
         public int Pips { get; }
         public float Multiplier { get; }
+
+        /// <summary>Flat elemental edge, already included in the score.</summary>
+        public int ElementBonus { get; }
+
         public int Score { get; }
 
         public LudoCombatRoll(
@@ -36,12 +40,14 @@ namespace ElementalLudo.Gameplay
             LudoDiceHand hand,
             int pips,
             float multiplier,
+            int elementBonus,
             int score)
         {
             Dice = dice;
             Hand = hand;
             Pips = pips;
             Multiplier = multiplier;
+            ElementBonus = elementBonus;
             Score = score;
         }
     }
@@ -115,6 +121,53 @@ namespace ElementalLudo.Gameplay
     public static class LudoCombatResolver
     {
         public const int DefaultDiceCount = 5;
+
+        /// <summary>
+        /// What holding the winning element is worth. Added after the
+        /// multiplier, deliberately: a flat edge helps a bad hand far more than
+        /// a good one, so it tilts close duels without letting a lucky póker
+        /// run away with the fight.
+        ///
+        /// Five points against typical scores in the thirties is roughly a
+        /// sixth of a throw — noticeable, not decisive.
+        /// </summary>
+        public const int ElementAdvantageBonus = 5;
+
+        /// <summary>
+        /// The elemental circle: fire burns plant, plant fouls lightning,
+        /// lightning splits water, water quenches fire. Every element beats
+        /// exactly one and loses to exactly one, so there is no dead pick and
+        /// no dominant one.
+        /// </summary>
+        public static bool Beats(LudoElement element, LudoElement rival)
+        {
+            return element switch
+            {
+                LudoElement.Fire => rival == LudoElement.Plant,
+                LudoElement.Plant => rival == LudoElement.Lightning,
+                LudoElement.Lightning => rival == LudoElement.Water,
+                LudoElement.Water => rival == LudoElement.Fire,
+                _ => false
+            };
+        }
+
+        /// <summary>
+        /// The bonus one token earns against another, or zero. Returns zero for
+        /// anything it cannot read, so a style without an element simply never
+        /// gets an edge rather than throwing mid-duel.
+        /// </summary>
+        public static int ElementBonusFor(Token own, Token rival)
+        {
+            if (own == null || rival == null ||
+                own.OwnerStyle == null || rival.OwnerStyle == null)
+            {
+                return 0;
+            }
+
+            return Beats(own.OwnerStyle.Element, rival.OwnerStyle.Element)
+                ? ElementAdvantageBonus
+                : 0;
+        }
 
         /// <summary>
         /// Multipliers are tuned by feel, not by probability — players expect
@@ -265,8 +318,14 @@ namespace ElementalLudo.Gameplay
             return pairCount == 1 ? LudoDiceHand.Pair : LudoDiceHand.Nothing;
         }
 
-        /// <summary>Scores an already-thrown hand. Pure.</summary>
-        public static LudoCombatRoll Evaluate(IReadOnlyList<int> dice)
+        /// <summary>
+        /// Scores an already-thrown hand. Pure. The elemental bonus lands after
+        /// the multiplier, so it is worth the same five points whatever the
+        /// dice did.
+        /// </summary>
+        public static LudoCombatRoll Evaluate(
+            IReadOnlyList<int> dice,
+            int elementBonus = 0)
         {
             int pips = 0;
             if (dice != null)
@@ -284,7 +343,8 @@ namespace ElementalLudo.Gameplay
                 hand,
                 pips,
                 multiplier,
-                Mathf.RoundToInt(pips * multiplier));
+                elementBonus,
+                Mathf.RoundToInt(pips * multiplier) + elementBonus);
         }
 
         /// <summary>
@@ -294,11 +354,23 @@ namespace ElementalLudo.Gameplay
         /// they can pick their own rerolls, then scores them the same way.
         /// </summary>
         public static LudoCombatOutcome Resolve(
+            Token attackerToken,
+            Token defenderToken,
+            bool elementalRules,
             int diceCount = DefaultDiceCount,
             int rerolls = LudoCombatHand.DefaultRerolls)
         {
-            LudoCombatHand attacker = new LudoCombatHand(diceCount, rerolls);
-            LudoCombatHand defender = new LudoCombatHand(diceCount, rerolls);
+            // Takes the tokens rather than plain numbers so the silent path
+            // cannot end up applying a different elemental edge from the one a
+            // watched duel would have used.
+            LudoCombatHand attacker = new LudoCombatHand(
+                diceCount,
+                rerolls,
+                elementalRules ? ElementBonusFor(attackerToken, defenderToken) : 0);
+            LudoCombatHand defender = new LudoCombatHand(
+                diceCount,
+                rerolls,
+                elementalRules ? ElementBonusFor(defenderToken, attackerToken) : 0);
             attacker.PlayOutWithAI();
             defender.PlayOutWithAI();
             return new LudoCombatOutcome(attacker.Evaluate(), defender.Evaluate());

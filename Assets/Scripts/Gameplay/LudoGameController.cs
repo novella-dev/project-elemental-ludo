@@ -1447,7 +1447,10 @@ namespace ElementalLudo.Gameplay
                     // Nobody is watching, so the whole duel collapses into one
                     // call — the same code both sides would have played by
                     // hand, just without the waiting.
-                    outcome = LudoCombatResolver.Resolve();
+                    outcome = LudoCombatResolver.Resolve(
+                        movingToken,
+                        defenderToken,
+                        settings.ElementalRules);
                     combatReport = new LudoCombatReport(
                         movingToken,
                         defenderToken,
@@ -1487,7 +1490,8 @@ namespace ElementalLudo.Gameplay
                 attackerToken,
                 defenderToken,
                 attackerToken.OwnerStyle == humanStyle,
-                defenderToken.OwnerStyle == humanStyle);
+                defenderToken.OwnerStyle == humanStyle,
+                settings.ElementalRules);
 
             combatVisible = true;
             statusMessage = "¡Duelo de dados!";

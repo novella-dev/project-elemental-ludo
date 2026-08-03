@@ -281,7 +281,7 @@ namespace ElementalLudo.Gameplay
         private void DrawCombatPanel()
         {
             const float width = 700f;
-            const float height = 190f;
+            const float height = 232f;
 
             LudoCombatSession session = controller.CombatSession;
             LudoCombatReport report = controller.CombatReport;
@@ -310,6 +310,12 @@ namespace ElementalLudo.Gameplay
             {
                 DrawCombatScoreLine(attackerToken, report.Outcome.Attacker, "ATACANTE", false);
                 DrawCombatScoreLine(defenderToken, report.Outcome.Defender, "DEFENSOR", false);
+                DrawCombatElementLine(
+                    session != null && session.ElementalRules,
+                    report.Outcome.Attacker,
+                    report.Outcome.Defender,
+                    attackerToken,
+                    defenderToken);
                 GUILayout.Space(8f);
                 DrawCombatVerdict(report);
                 GUILayout.EndArea();
@@ -317,11 +323,9 @@ namespace ElementalLudo.Gameplay
             }
 
             bool attackerActive = session.Phase == LudoCombatPhase.AttackerTurn;
-            DrawCombatScoreLine(
-                attackerToken,
-                session.Attacker.Evaluate(),
-                "ATACANTE",
-                attackerActive);
+            LudoCombatRoll attackerRoll = session.Attacker.Evaluate();
+            LudoCombatRoll defenderRoll = session.Defender.Evaluate();
+            DrawCombatScoreLine(attackerToken, attackerRoll, "ATACANTE", attackerActive);
 
             if (attackerActive)
             {
@@ -329,19 +333,55 @@ namespace ElementalLudo.Gameplay
             }
             else
             {
-                DrawCombatScoreLine(
-                    defenderToken,
-                    session.Defender.Evaluate(),
-                    "DEFENSOR",
-                    true);
+                DrawCombatScoreLine(defenderToken, defenderRoll, "DEFENSOR", true);
                 GUILayout.Label(
                     $"Necesita superar {session.ScoreToBeat} para resistir.",
                     hintStyle);
             }
 
+            DrawCombatElementLine(
+                session.ElementalRules,
+                attackerRoll,
+                defenderRoll,
+                attackerToken,
+                defenderToken);
+
             GUILayout.Space(6f);
             DrawCombatControls(session);
             GUILayout.EndArea();
+        }
+
+        /// <summary>
+        /// Spells the elemental edge out inside the duel: which side it favours
+        /// and the circle it comes from. Drawn whenever the elemental layer is
+        /// on, so a neutral matchup still explains why nobody got the five
+        /// points rather than leaving a blank where an explanation was.
+        /// </summary>
+        private void DrawCombatElementLine(
+            bool elementalRules,
+            LudoCombatRoll attackerRoll,
+            LudoCombatRoll defenderRoll,
+            Token attackerToken,
+            Token defenderToken)
+        {
+            bool anyBonus =
+                attackerRoll.ElementBonus > 0 || defenderRoll.ElementBonus > 0;
+            if (!elementalRules && !anyBonus)
+            {
+                return;
+            }
+
+            string advantage = LudoCombatInfo.AdvantageLine(
+                attackerRoll,
+                defenderRoll,
+                attackerToken,
+                defenderToken);
+
+            GUILayout.Space(4f);
+            GUILayout.Label(
+                advantage ?? "Sin ventaja elemental en este duelo.",
+                advantage != null ? sectionLabelStyle : hintStyle);
+            GUILayout.Label(LudoCombatInfo.AdvantageRule, hintStyle);
         }
 
         /// <summary>One side's running total, marked when it's their turn.</summary>
