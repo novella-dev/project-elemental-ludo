@@ -23,6 +23,9 @@ namespace ElementalLudo.Gameplay
 
         [SerializeField] private LudoGameController controller;
         [SerializeField] private bool showPanel = true;
+        [SerializeField] private Camera backgroundCamera;
+        [SerializeField] private Color darkBackground = Color.black;
+        [SerializeField] private Color lightBackground = Color.white;
 
         private static readonly LudoGameMode[] SelectableModes =
         {
@@ -57,13 +60,23 @@ namespace ElementalLudo.Gameplay
         private GUIStyle winnerStyle;
         private GUIStyle ruleTitleStyle;
         private GUIStyle historyLatestStyle;
+        private GUIStyle backgroundButtonStyle;
         private bool stylesReady;
+        private bool lightBackgroundActive;
 
         private void Awake()
         {
             if (controller == null)
             {
                 controller = FindFirstObjectByType<LudoGameController>();
+            }
+
+            ResolveBackgroundCamera();
+            if (backgroundCamera != null)
+            {
+                lightBackgroundActive =
+                    backgroundCamera.backgroundColor.grayscale >= 0.5f;
+                ApplyBackgroundColor();
             }
         }
 
@@ -79,12 +92,18 @@ namespace ElementalLudo.Gameplay
 
         private void OnGUI()
         {
-            if (!showPanel || controller == null || !controller.IsInitialized)
+            if (!showPanel)
             {
                 return;
             }
 
             EnsureStyles();
+            DrawBackgroundToggle();
+
+            if (controller == null || !controller.IsInitialized)
+            {
+                return;
+            }
 
             if (controller.AwaitingSetup)
             {
@@ -113,6 +132,53 @@ namespace ElementalLudo.Gameplay
             }
 
             DrawHistoryPanel();
+        }
+
+        private void DrawBackgroundToggle()
+        {
+            const float width = 180f;
+            const float height = 34f;
+            Rect buttonRect = new Rect(
+                (Screen.width - width) * 0.5f,
+                PanelMargin,
+                width,
+                height);
+            string label = lightBackgroundActive
+                ? "FONDO: BLANCO"
+                : "FONDO: NEGRO";
+
+            if (!GUI.Button(buttonRect, label, backgroundButtonStyle))
+            {
+                return;
+            }
+
+            lightBackgroundActive = !lightBackgroundActive;
+            ApplyBackgroundColor();
+        }
+
+        private void ApplyBackgroundColor()
+        {
+            ResolveBackgroundCamera();
+            if (backgroundCamera != null)
+            {
+                backgroundCamera.backgroundColor = lightBackgroundActive
+                    ? lightBackground
+                    : darkBackground;
+            }
+        }
+
+        private void ResolveBackgroundCamera()
+        {
+            if (backgroundCamera != null)
+            {
+                return;
+            }
+
+            backgroundCamera = Camera.main;
+            if (backgroundCamera == null)
+            {
+                backgroundCamera = FindFirstObjectByType<Camera>();
+            }
         }
 
         private void DrawHeader(Color playerColor)
@@ -753,6 +819,12 @@ namespace ElementalLudo.Gameplay
                 fontStyle = FontStyle.Bold,
                 wordWrap = true,
                 normal = { textColor = Color.white }
+            };
+
+            backgroundButtonStyle = new GUIStyle(toggleOffStyle)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                fontSize = 12
             };
 
             stylesReady = true;

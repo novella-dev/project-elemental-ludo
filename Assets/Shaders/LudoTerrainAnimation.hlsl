@@ -82,15 +82,30 @@ void ApplyLudoTerrainAnimation(
     }
     else if (abs(animationKind - LUDO_ANIMATION_CLOUD) < 0.25)
     {
-        float randomTime = time * animationData.z + animationData.y * 17.0;
-        float randomStep = floor(randomTime);
-        float transition = smoothstep(0.0, 1.0, frac(randomTime));
-        float startingTone = fmod(
-            floor(animationData.y * 97.0) + randomStep,
-            2.0);
-        float endingTone = 1.0 - startingTone;
-        float tone = lerp(startingTone, endingTone, transition);
-        brightness = (half)lerp(0.88, 1.12, tone);
+        float phase = animationData.y * TWO_PI;
+        float colorTime = time * animationData.z * TWO_PI;
+
+        // Two slow waves with unrelated periods create a continuous,
+        // non-repeating-feeling grey transition for each cloud.
+        float primaryTone = sin(colorTime + phase);
+        float secondaryTone = sin(
+            colorTime * 0.63 + phase * 2.37 + 1.19);
+        float tone = primaryTone * 0.68 + secondaryTone * 0.32;
+        // The broader range remains readable after the cel-lighting bands,
+        // while the sine blend keeps the change soft rather than flickering.
+        brightness = (half)(1.0 + tone * 0.26);
+
+        // Only the five large banks receive a non-zero radius. Their two
+        // overlapping orbits keep the movement rounded, gentle and irregular.
+        float driftTime = time * (0.22 + animationData.y * 0.08);
+        float2 broadOrbit = float2(
+            cos(driftTime + phase),
+            sin(driftTime * 0.87 + phase * 1.31));
+        float2 smallWobble = float2(
+            sin(driftTime * 1.73 + phase * 2.11),
+            cos(driftTime * 1.41 - phase * 1.67));
+        positionOS.xy += animationData.w
+            * (broadOrbit * 0.76 + smallWobble * 0.24);
     }
     else if (abs(animationKind - LUDO_ANIMATION_LAVA) < 0.25)
     {
