@@ -1096,7 +1096,9 @@ namespace ElementalLudo.Gameplay
             dice.SetRollEnabled(false);
             SetTokenInteractionStates(false, true);
             statusMessage =
-                $"{DisplayName(winner.PlayerId)} wins! All four tokens reached the goal.";
+                settings.Permadeath
+                    ? $"{DisplayName(winner.PlayerId)} wins!"
+                    : $"{DisplayName(winner.PlayerId)} wins! All four tokens reached the goal.";
         }
 
         private Vector3 GetRoutePosition(
