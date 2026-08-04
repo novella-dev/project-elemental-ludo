@@ -72,7 +72,7 @@ namespace ElementalLudo.Gameplay
                 controller = FindFirstObjectByType<LudoGameController>();
             }
 
-            ResolveBackgroundCamera();
+            RefreshBackgroundCamera();
             if (backgroundCamera != null)
             {
                 lightBackgroundActive =
@@ -99,6 +99,7 @@ namespace ElementalLudo.Gameplay
             }
 
             EnsureStyles();
+            RefreshBackgroundCamera();
             DrawBackgroundToggle();
 
             if (controller == null || !controller.IsInitialized)
@@ -170,7 +171,7 @@ namespace ElementalLudo.Gameplay
 
         private void ApplyBackgroundColor()
         {
-            ResolveBackgroundCamera();
+            RefreshBackgroundCamera();
             if (backgroundCamera != null)
             {
                 backgroundCamera.backgroundColor = lightBackgroundActive
@@ -179,17 +180,44 @@ namespace ElementalLudo.Gameplay
             }
         }
 
-        private void ResolveBackgroundCamera()
+        private void RefreshBackgroundCamera()
         {
-            if (backgroundCamera != null)
+            Camera activeCamera = null;
+            foreach (Camera candidate in Camera.allCameras)
+            {
+                if (candidate == null ||
+                    !candidate.isActiveAndEnabled ||
+                    !candidate.gameObject.activeInHierarchy)
+                {
+                    continue;
+                }
+
+                if (activeCamera == null || candidate.depth > activeCamera.depth)
+                {
+                    activeCamera = candidate;
+                }
+            }
+
+            if (activeCamera == null)
+            {
+                activeCamera = Camera.main;
+            }
+
+            if (activeCamera == null)
+            {
+                activeCamera = FindFirstObjectByType<Camera>();
+            }
+
+            if (backgroundCamera == activeCamera)
             {
                 return;
             }
 
-            backgroundCamera = Camera.main;
-            if (backgroundCamera == null)
+            backgroundCamera = activeCamera;
+            if (backgroundCamera != null)
             {
-                backgroundCamera = FindFirstObjectByType<Camera>();
+                lightBackgroundActive =
+                    backgroundCamera.backgroundColor.grayscale >= 0.5f;
             }
         }
 
