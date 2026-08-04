@@ -30,32 +30,50 @@ namespace ElementalLudo.Gameplay
         /// The standard version of each upgrade. A run that wants a stronger or
         /// weaker copy builds its own <see cref="LudoUpgrade"/> instead — these
         /// are the defaults, not the only allowed values.
+        ///
+        /// Every magnitude below was measured at 200k simulated duels against
+        /// an unupgraded rival, where an unarmed attacker wins 48.4%. The set
+        /// lands between 57% and 68%, with the strongest effect given the
+        /// fewest charges so power and availability trade off against each
+        /// other rather than stacking.
         /// </summary>
         public static LudoUpgrade Default(LudoUpgradeKind kind)
         {
             return kind switch
             {
-                // A sixth die is worth far more than a sixth of the score: it
-                // raises the pip floor and makes every set easier to fill.
+                // 67.9%, far and away the strongest, so it gets a single
+                // charge. A sixth die is worth much more than a sixth of the
+                // score: it lifts the pip floor and fills sets faster. It does
+                // make a straight rarer, not commoner — six dice need all six
+                // faces, where five have two ways to run — but the multiplier
+                // it loses there is dwarfed by what the extra pips gain.
                 LudoUpgradeKind.ExtraDie =>
-                    new LudoUpgrade(kind, 1f, 2),
+                    new LudoUpgrade(kind, 1f, 1),
 
+                // 58.4% at two extra. One alone was only 54.2%, barely worth
+                // the slot, because the AI's own reroll policy already stops
+                // early on a hand it cannot improve.
                 LudoUpgradeKind.ExtraReroll =>
-                    new LudoUpgrade(kind, 1f, 3),
+                    new LudoUpgrade(kind, 2f, 3),
 
-                // On top of the base +5, so an armed edge is worth +10 — only
-                // when the elemental matchup already favours you.
+                // 64.2% on top of the base +5, for +8 total. Held below the
+                // others' headline because it is the only conditional one: it
+                // does nothing at all unless the matchup already favours you,
+                // which is about half of duels.
                 LudoUpgradeKind.ElementalEdge =>
-                    new LudoUpgrade(kind, 5f, 2),
+                    new LudoUpgrade(kind, 3f, 2),
 
-                // Before the multiplier, so a good hand compounds it.
+                // 60.0%. Before the multiplier, so a good hand compounds it.
                 LudoUpgradeKind.FlatPips =>
                     new LudoUpgrade(kind, 3f, 3),
 
-                // Trío is the default target: common enough to be worth
-                // carrying, not so common it always fires.
+                // 56.7% on Full. Full is the default target because rerolls
+                // make it the most common hand by far at 39.9% — the same boost
+                // on Trío managed 50.7%, near enough to nothing, because Trío
+                // only lands 13.4% of the time. Runs wanting a riskier
+                // specialisation build their own with a scarcer target hand.
                 LudoUpgradeKind.HandMastery =>
-                    new LudoUpgrade(kind, 0.4f, 2, LudoDiceHand.ThreeOfAKind),
+                    new LudoUpgrade(kind, 1f, 2, LudoDiceHand.FullHouse),
 
                 LudoUpgradeKind.BarrierExemption =>
                     new LudoUpgrade(kind, 1f, 2),

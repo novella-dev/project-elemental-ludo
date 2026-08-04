@@ -319,15 +319,20 @@ namespace ElementalLudo.Gameplay
         }
 
         /// <summary>
-        /// Scores an already-thrown hand. Pure. The elemental bonus lands after
-        /// the multiplier, so it is worth the same five points whatever the
-        /// dice did.
+        /// Scores an already-thrown hand. Pure.
+        ///
+        /// The order the modifiers land in is the design, not an accident: flat
+        /// pips join the throw before the multiplier so a good hand compounds
+        /// them, while the elemental bonus lands after it and is worth the same
+        /// whatever the dice did.
         /// </summary>
         public static LudoCombatRoll Evaluate(
             IReadOnlyList<int> dice,
-            int elementBonus = 0)
+            LudoCombatModifiers modifiers = null)
         {
-            int pips = 0;
+            modifiers ??= LudoCombatModifiers.None;
+
+            int pips = modifiers.FlatPips;
             if (dice != null)
             {
                 foreach (int die in dice)
@@ -336,15 +341,18 @@ namespace ElementalLudo.Gameplay
                 }
             }
 
+            pips = Mathf.Max(0, pips);
+
             LudoDiceHand hand = Classify(dice);
-            float multiplier = MultiplierFor(hand);
+            float multiplier =
+                MultiplierFor(hand) + modifiers.MultiplierBoostFor(hand);
             return new LudoCombatRoll(
                 dice,
                 hand,
                 pips,
                 multiplier,
-                elementBonus,
-                Mathf.RoundToInt(pips * multiplier) + elementBonus);
+                modifiers.ElementBonus,
+                Mathf.RoundToInt(pips * multiplier) + modifiers.ElementBonus);
         }
 
         /// <summary>
@@ -362,18 +370,32 @@ namespace ElementalLudo.Gameplay
         {
             // Takes the tokens rather than plain numbers so the silent path
             // cannot end up applying a different elemental edge from the one a
-            // watched duel would have used.
+            // watched duel would have used. No upgrades are folded in here on
+            // purpose: this path only runs for AI-versus-AI captures, and
+            // upgrades belong to the player.
             LudoCombatHand attacker = new LudoCombatHand(
                 diceCount,
                 rerolls,
-                elementalRules ? ElementBonusFor(attackerToken, defenderToken) : 0);
+                ModifiersFor(attackerToken, defenderToken, elementalRules));
             LudoCombatHand defender = new LudoCombatHand(
                 diceCount,
                 rerolls,
-                elementalRules ? ElementBonusFor(defenderToken, attackerToken) : 0);
+                ModifiersFor(defenderToken, attackerToken, elementalRules));
             attacker.PlayOutWithAI();
             defender.PlayOutWithAI();
             return new LudoCombatOutcome(attacker.Evaluate(), defender.Evaluate());
+        }
+
+        /// <summary>An unupgraded side carrying only whatever elemental edge it has.</summary>
+        public static LudoCombatModifiers ModifiersFor(
+            Token own,
+            Token rival,
+            bool elementalRules)
+        {
+            int bonus = elementalRules ? ElementBonusFor(own, rival) : 0;
+            return bonus == 0
+                ? LudoCombatModifiers.None
+                : LudoCombatModifiers.None.WithElementBonus(bonus);
         }
     }
 }

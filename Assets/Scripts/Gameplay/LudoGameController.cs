@@ -96,6 +96,9 @@ namespace ElementalLudo.Gameplay
         private bool combatVisible;
         private LudoCombatReport combatReport;
         private LudoCombatSession combatSession;
+
+        // Survives individual duels but not a match: a new run starts empty.
+        private readonly LudoUpgradeInventory upgrades = new LudoUpgradeInventory();
         private bool combatTurnConfirmed;
         private int activePlayerIndex;
         private int rolledValue;
@@ -137,6 +140,17 @@ namespace ElementalLudo.Gameplay
 
         /// <summary>The duel in progress, or null once it has resolved.</summary>
         public LudoCombatSession CombatSession => combatSession;
+
+        /// <summary>
+        /// What the player is carrying this run. Owned by the controller
+        /// because it outlives any one duel; A3 will fill it from the run
+        /// instead of the debug grant that seeds it today.
+        /// </summary>
+        public LudoUpgradeInventory Upgrades => upgrades;
+
+        public bool TryArmUpgrade(int slotIndex) => upgrades.TryArm(slotIndex);
+
+        public bool TryDisarmUpgrade(int slotIndex) => upgrades.TryDisarm(slotIndex);
 
         public bool IsInitialized => initialized;
         public bool IsDiceRolling => dice != null && dice.IsRolling;
@@ -358,6 +372,28 @@ namespace ElementalLudo.Gameplay
         }
 
         /// <summary>
+        /// Fills the player's inventory at the start of an Adventure match.
+        ///
+        /// A placeholder: A3 will hand upgrades out as rewards along a run, and
+        /// this whole method goes away when it does. Granting one of each for
+        /// now is what makes the system testable before the run exists to feed
+        /// it. Other modes get nothing, so upgrades stay an Adventure feature.
+        /// </summary>
+        private void SeedUpgrades(LudoGameMode mode)
+        {
+            upgrades.Clear();
+            if (mode != LudoGameMode.Adventure)
+            {
+                return;
+            }
+
+            foreach (LudoUpgradeKind kind in LudoUpgradeCatalog.AllKinds)
+            {
+                upgrades.Grant(kind);
+            }
+        }
+
+        /// <summary>
         /// Begins a match. Hot-seat gives every seat to the human; the rest
         /// give one seat to the human and the others to the AI.
         /// </summary>
@@ -370,6 +406,7 @@ namespace ElementalLudo.Gameplay
 
             settings = matchSettings;
             elementalModeEnabled = matchSettings.ElementalRules;
+            SeedUpgrades(matchSettings.Mode);
 
             EnsureBoardPresenter();
             boardPresenter.Apply(matchSettings.UsesClassicBoard);
@@ -1491,7 +1528,13 @@ namespace ElementalLudo.Gameplay
                 defenderToken,
                 attackerToken.OwnerStyle == humanStyle,
                 defenderToken.OwnerStyle == humanStyle,
-                settings.ElementalRules);
+                settings.ElementalRules,
+                upgrades);
+
+            // Spent only now that the duel is definitely happening and the
+            // hands have already been built from them. Charging earlier would
+            // burn an armed upgrade on a capture that never became a duel.
+            upgrades.ConsumeArmedDuelUpgrades();
 
             combatVisible = true;
             statusMessage = "¡Duelo de dados!";

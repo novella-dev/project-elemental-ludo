@@ -31,6 +31,7 @@ namespace ElementalLudo.Gameplay
             bool attackerIsHuman,
             bool defenderIsHuman,
             bool elementalRules,
+            LudoUpgradeInventory inventory = null,
             int diceCount = LudoCombatResolver.DefaultDiceCount,
             int rerolls = LudoCombatHand.DefaultRerolls)
         {
@@ -40,22 +41,46 @@ namespace ElementalLudo.Gameplay
             DefenderIsHuman = defenderIsHuman;
             ElementalRules = elementalRules;
 
-            // Worked out once, at the start: the matchup cannot change while
-            // the duel runs, and baking it into the hands keeps every later
-            // reading of the score consistent.
-            Attacker = new LudoCombatHand(
-                diceCount,
-                rerolls,
-                elementalRules
-                    ? LudoCombatResolver.ElementBonusFor(attackerToken, defenderToken)
-                    : 0);
-            Defender = new LudoCombatHand(
-                diceCount,
-                rerolls,
-                elementalRules
-                    ? LudoCombatResolver.ElementBonusFor(defenderToken, attackerToken)
-                    : 0);
+            // Worked out once, at the start: neither the matchup nor the armed
+            // upgrades can change while the duel runs, and baking them into the
+            // hands keeps every later reading of the score consistent.
+            //
+            // Upgrades only ever join the human's side. Which side that is
+            // depends on who attacked, so the two are resolved separately
+            // rather than assuming the player is the attacker.
+            LudoCombatModifiers attackerModifiers = BuildModifiers(
+                attackerToken, defenderToken, attackerIsHuman, elementalRules, inventory);
+            LudoCombatModifiers defenderModifiers = BuildModifiers(
+                defenderToken, attackerToken, defenderIsHuman, elementalRules, inventory);
+
+            Attacker = new LudoCombatHand(diceCount, rerolls, attackerModifiers);
+            Defender = new LudoCombatHand(diceCount, rerolls, defenderModifiers);
             Phase = LudoCombatPhase.AttackerTurn;
+        }
+
+        /// <summary>
+        /// One side's numbers: its elemental edge always, plus the armed
+        /// upgrades if this is the side the player is on.
+        /// </summary>
+        private static LudoCombatModifiers BuildModifiers(
+            Token own,
+            Token rival,
+            bool isHuman,
+            bool elementalRules,
+            LudoUpgradeInventory inventory)
+        {
+            int elementBonus = elementalRules
+                ? LudoCombatResolver.ElementBonusFor(own, rival)
+                : 0;
+
+            if (!isHuman || inventory == null)
+            {
+                return elementBonus == 0
+                    ? LudoCombatModifiers.None
+                    : LudoCombatModifiers.None.WithElementBonus(elementBonus);
+            }
+
+            return inventory.BuildCombatModifiers(elementBonus);
         }
 
         public Token AttackerToken { get; }

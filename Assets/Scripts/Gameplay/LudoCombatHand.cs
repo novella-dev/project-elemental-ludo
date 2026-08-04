@@ -19,11 +19,15 @@ namespace ElementalLudo.Gameplay
         public LudoCombatHand(
             int diceCount = LudoCombatResolver.DefaultDiceCount,
             int rerolls = DefaultRerolls,
-            int elementBonus = 0)
+            LudoCombatModifiers modifiers = null)
         {
-            dice = new int[Mathf.Max(1, diceCount)];
-            RerollsLeft = Mathf.Max(0, rerolls);
-            ElementBonus = elementBonus;
+            Modifiers = modifiers ?? LudoCombatModifiers.None;
+
+            // The extra dice and rerolls have to be folded in here rather than
+            // applied later: the array is sized and thrown in this constructor,
+            // so a die added afterwards would never have been rolled.
+            dice = new int[Mathf.Max(1, diceCount + Modifiers.ExtraDice)];
+            RerollsLeft = Mathf.Max(0, rerolls + Modifiers.ExtraRerolls);
             ThrowAll();
         }
 
@@ -32,13 +36,16 @@ namespace ElementalLudo.Gameplay
         public bool CanReroll => RerollsLeft > 0;
 
         /// <summary>
-        /// The elemental edge this side carries into the duel, fixed for its
-        /// whole length. Held here rather than passed to <see cref="Evaluate"/>
-        /// so the score is right everywhere it is read — the arena and the
-        /// panel both call Evaluate with no arguments, and either could
-        /// otherwise show a total the fight is not actually using.
+        /// Everything shifting this side's numbers, fixed for the duel's whole
+        /// length. Held here rather than passed to <see cref="Evaluate"/> so the
+        /// score is right everywhere it is read — the arena and the panel both
+        /// call Evaluate with no arguments, and either could otherwise show a
+        /// total the fight is not actually using.
         /// </summary>
-        public int ElementBonus { get; }
+        public LudoCombatModifiers Modifiers { get; }
+
+        /// <summary>The elemental edge inside <see cref="Modifiers"/>.</summary>
+        public int ElementBonus => Modifiers.ElementBonus;
 
         /// <summary>Opening throw. Doesn't cost a reroll.</summary>
         public void ThrowAll()
@@ -87,7 +94,7 @@ namespace ElementalLudo.Gameplay
         {
             int[] snapshot = new int[dice.Length];
             System.Array.Copy(dice, snapshot, dice.Length);
-            return LudoCombatResolver.Evaluate(snapshot, ElementBonus);
+            return LudoCombatResolver.Evaluate(snapshot, Modifiers);
         }
     }
 }
