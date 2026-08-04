@@ -592,6 +592,15 @@ namespace ElementalLudo.Gameplay
                     height),
                 panelStyle);
 
+            // Only present inside a loose combat, where a single round decides
+            // nothing on its own.
+            string scoreline = controller.RunDuelScoreline;
+            if (!string.IsNullOrEmpty(scoreline))
+            {
+                GUILayout.Label(scoreline, sectionLabelStyle);
+                GUILayout.Space(2f);
+            }
+
             // Resolved but not yet cleared counts as over: the session lingers
             // through the result display, so testing for null alone would keep
             // showing the in-progress view the whole time.

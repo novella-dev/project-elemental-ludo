@@ -61,6 +61,9 @@ namespace ElementalLudo.Gameplay
         /// </summary>
         private const int RunStageCount = 6;
 
+        /// <summary>Rounds needed to take a loose combat: best of three.</summary>
+        private const int RunDuelWinsNeeded = 2;
+
         private const int MaxMoveHistoryEntries = 30;
         private const float SharedCellOffsetMagnitude = 0.55f;
 
@@ -119,6 +122,10 @@ namespace ElementalLudo.Gameplay
 
         /// <summary>True while a fight the run sent us into is being played.</summary>
         private bool runNodeActive;
+
+        /// <summary>Rounds taken so far in a loose combat, which is best of three.</summary>
+        private int runDuelPlayerWins;
+        private int runDuelRivalWins;
         private bool combatTurnConfirmed;
         private int activePlayerIndex;
         private int rolledValue;
@@ -195,6 +202,16 @@ namespace ElementalLudo.Gameplay
         /// </summary>
         public bool IsRunMapVisible =>
             currentRun != null && !runNodeActive && !IsRewardPending;
+
+        /// <summary>
+        /// The running score of a loose combat, or null when the duel on screen
+        /// is a board capture rather than a best-of-three.
+        /// </summary>
+        public string RunDuelScoreline =>
+            runNodeActive && currentRun != null &&
+            currentRun.CurrentNode.Kind == LudoRunNodeKind.Duel
+                ? $"COMBATE AL MEJOR DE 3  ·  {runDuelPlayerWins}-{runDuelRivalWins}"
+                : null;
 
         public bool IsInitialized => initialized;
         public bool IsDiceRolling => dice != null && dice.IsRolling;
@@ -531,12 +548,42 @@ namespace ElementalLudo.Gameplay
             Token playerToken = players[playerSeat].Tokens[0];
             Token rivalToken = players[rivalSeat].Tokens[0];
 
-            // The player attacks, so they throw first and the rival answers
-            // knowing the score — the same shape as a capture on the board.
-            yield return PlayDuel(playerToken, rivalToken);
+            runDuelPlayerWins = 0;
+            runDuelRivalWins = 0;
 
-            bool won = combatReport.HumanWon;
-            LogMove(won ? "Ganas el combate." : "Pierdes el combate.");
+            // Best of three. A single throw hangs the whole node on one roll,
+            // and with ties going to the defender that made a loose combat
+            // swingier than a capture on the board ever is.
+            while (runDuelPlayerWins < RunDuelWinsNeeded &&
+                   runDuelRivalWins < RunDuelWinsNeeded)
+            {
+                // The player attacks, so they throw first and the rival answers
+                // knowing the score — the same shape as a capture on the board.
+                // Charges are held back until the set is over.
+                yield return PlayDuel(playerToken, rivalToken, false);
+
+                if (combatReport.HumanWon)
+                {
+                    runDuelPlayerWins++;
+                }
+                else
+                {
+                    runDuelRivalWins++;
+                }
+
+                LogMove(
+                    $"Combate {runDuelPlayerWins}-{runDuelRivalWins} " +
+                    $"({(combatReport.HumanWon ? "ganas" : "pierdes")} la ronda).");
+            }
+
+            ActiveUpgrades.ConsumeArmedDuelUpgrades();
+
+            bool won = runDuelPlayerWins >= RunDuelWinsNeeded;
+            LogMove(won
+                ? $"Ganas el combate {runDuelPlayerWins}-{runDuelRivalWins}."
+                : $"Pierdes el combate {runDuelPlayerWins}-{runDuelRivalWins}.");
+            runDuelPlayerWins = 0;
+            runDuelRivalWins = 0;
             FinishRunNode(won);
         }
 
@@ -1891,7 +1938,10 @@ namespace ElementalLudo.Gameplay
         /// score to beat. Human sides wait for input; AI sides spend their
         /// rerolls on a timer so the player can follow what happened.
         /// </summary>
-        private IEnumerator PlayDuel(Token attackerToken, Token defenderToken)
+        private IEnumerator PlayDuel(
+            Token attackerToken,
+            Token defenderToken,
+            bool spendArmedUpgrades = true)
         {
             PlayerStyle humanStyle = humanSeatIndex >= 0 && humanSeatIndex < players.Count
                 ? players[humanSeatIndex].Style
@@ -1908,7 +1958,15 @@ namespace ElementalLudo.Gameplay
             // Spent only now that the duel is definitely happening and the
             // hands have already been built from them. Charging earlier would
             // burn an armed upgrade on a capture that never became a duel.
-            ActiveUpgrades.ConsumeArmedDuelUpgrades();
+            //
+            // A best-of-three holds off instead: it spends once for the whole
+            // set, so an upgrade armed for the encounter is still there in the
+            // rounds that follow. Charging per round would quietly disarm the
+            // player after game one, with no panel on screen to re-arm from.
+            if (spendArmedUpgrades)
+            {
+                ActiveUpgrades.ConsumeArmedDuelUpgrades();
+            }
 
             combatVisible = true;
             statusMessage = "¡Duelo de dados!";
