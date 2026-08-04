@@ -5,6 +5,7 @@ using ElementalLudo.Tokens;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 namespace ElementalLudo.Board
 {
@@ -38,7 +39,6 @@ namespace ElementalLudo.Board
         // stonework wants. A dedicated arena shader was tried and silently
         // failed to resolve, leaving the mesh material-less and magenta.
         private const string FloorShaderName = "Elemental Ludo/Board Vertex Color";
-        private const string OutlineShaderName = "Elemental Ludo/Token Outline";
 
         // Just behind the pieces, which stand at Z <= 0.
         private const float FloorDepth = 0.1f;
@@ -55,8 +55,8 @@ namespace ElementalLudo.Board
         private const float HoverLift = 0.32f;
 
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
-        private static readonly int OutlineColorId = Shader.PropertyToID("_OutlineColor");
-        private static readonly int OutlineWidthId = Shader.PropertyToID("_OutlineWidth");
+        private static readonly Color Ink = LudoBoardVisualStyle.Ink;
+        private static readonly Color Paper = LudoBoardVisualStyle.Paper;
 
         /// <summary>
         /// The framings that were tried. The arena is fixed on
@@ -69,7 +69,7 @@ namespace ElementalLudo.Board
         {
             new ArenaViewPreset("1 · Cenital", 0f, 12f, 25f, 34f),
             new ArenaViewPreset("2 · 2.5D", 0f, 38f, 26f, 34f),
-            new ArenaViewPreset("3 · Diagonal", 34f, 44f, 27f, 36f),
+            new ArenaViewPreset("3 · Diagonal", 32f, 43f, 29f, 38f),
             new ArenaViewPreset("4 · Tribuna", 0f, 62f, 24f, 42f)
         };
 
@@ -77,38 +77,35 @@ namespace ElementalLudo.Board
         [SerializeField] private float diceSpacing = 1.15f;
         [SerializeField] private float diceRowOffset = 1.9f;
         [SerializeField] private float tokenRowOffset = 4.4f;
-        [SerializeField] private float tokenSize = 1.8f;
+        [SerializeField] private float tokenSize = 2.2f;
 
         [Header("Camera")]
-        [SerializeField] private Color background = new Color(0.05f, 0.05f, 0.09f);
+        [SerializeField] private Color background =
+            LudoBoardVisualStyle.Lighten(LudoBoardVisualStyle.SafeCell, 0.28f);
 
         [Header("Arena Floor")]
         [SerializeField] private float floorRadius = 9f;
-        [SerializeField] private Color sandInner = new Color(0.62f, 0.45f, 0.26f);
-        [SerializeField] private Color sandOuter = new Color(0.44f, 0.30f, 0.16f);
-        [SerializeField] private Color wallColor = new Color(0.30f, 0.20f, 0.12f);
-        [SerializeField] private Color wallTop = new Color(0.46f, 0.33f, 0.21f);
+        [SerializeField] private Color sandInner = LudoBoardVisualStyle.SandLight;
+        [SerializeField] private Color sandOuter = LudoBoardVisualStyle.SandMid;
+        [SerializeField] private Color wallColor = LudoBoardVisualStyle.SandDark;
+        [SerializeField] private Color wallTop = LudoBoardVisualStyle.SandMid;
 
         [Header("Coliseum")]
         [Min(2)]
         [SerializeField] private int columnCount = 9;
         [Tooltip("Degrees of the ring the columns cover, centred on the far side. The rest is left open so the near ones never stand between the camera and the dice.")]
         [Range(60f, 340f)]
-        [SerializeField] private float columnArc = 224f;
+        [SerializeField] private float columnArc = 160f;
         [SerializeField] private float columnRadius = 0.42f;
-        [SerializeField] private float columnHeight = 5.6f;
-        [SerializeField] private float archRise = 1.55f;
+        [SerializeField] private float columnHeight = 4.0f;
+        [SerializeField] private float archRise = 1.05f;
         [SerializeField] private float archThickness = 0.36f;
         [SerializeField] private float archDepth = 0.52f;
         // Kept bright: the shader's darkest band multiplies by 0.62, and any
         // face turned away from the key light lands there. Stone that reads
         // well lit has to survive that cut without going to mud.
-        [SerializeField] private Color stoneLower = new Color(0.60f, 0.48f, 0.36f);
-        [SerializeField] private Color stoneUpper = new Color(0.82f, 0.71f, 0.56f);
-
-        [Header("Cel Outline")]
-        [SerializeField] private float outlineWidth = 0.04f;
-        [SerializeField] private Color outlineColor = new Color(0.03f, 0.02f, 0.02f);
+        [SerializeField] private Color stoneLower = LudoBoardVisualStyle.SandDark;
+        [SerializeField] private Color stoneUpper = LudoBoardVisualStyle.SandLight;
 
         [Header("Dice Animation")]
         [Min(0.05f)]
@@ -130,7 +127,7 @@ namespace ElementalLudo.Board
         private Material dicePipMaterial;
         private Material floorMaterial;
         private Material stoneMaterial;
-        private Material stoneOutlineMaterial;
+        private Mesh floorMesh;
         private GameObject floorObject;
         private GameObject stoneObject;
 
@@ -199,7 +196,6 @@ namespace ElementalLudo.Board
 
             session = combatSession;
             EnsureRoot();
-            EnsureArena();
 
             // Laid out by who is watching, not by who attacks: the player is
             // the defender half the time, and they should still be the side
@@ -207,6 +203,7 @@ namespace ElementalLudo.Board
             float attackerRow = combatSession.AttackerIsHuman
                 ? -diceRowOffset
                 : diceRowOffset;
+            EnsureArena(combatSession, attackerRow);
             BuildSide(attackerDice, combatSession.Attacker.Dice.Count, attackerRow);
             BuildSide(defenderDice, combatSession.Defender.Dice.Count, -attackerRow);
             BuildCombatants(combatSession, attackerRow);
@@ -374,7 +371,7 @@ namespace ElementalLudo.Board
             DestroyGenerated(dicePipMaterial);
             DestroyGenerated(floorMaterial);
             DestroyGenerated(stoneMaterial);
-            DestroyGenerated(stoneOutlineMaterial);
+            DestroyGenerated(floorMesh);
         }
 
         private static void DestroyGenerated(Object target)
@@ -413,6 +410,13 @@ namespace ElementalLudo.Board
                 arenaCamera.orthographic = false;
                 arenaCamera.clearFlags = CameraClearFlags.SolidColor;
                 arenaCamera.backgroundColor = background;
+
+                UniversalAdditionalCameraData cameraData =
+                    arenaCamera.GetUniversalAdditionalCameraData();
+                cameraData.renderPostProcessing = true;
+                cameraData.antialiasing =
+                    AntialiasingMode.SubpixelMorphologicalAntiAliasing;
+                cameraData.antialiasingQuality = AntialiasingQuality.High;
             }
 
             SuspendBoardCamera();
@@ -580,9 +584,11 @@ namespace ElementalLudo.Board
             root = rootObject.transform;
         }
 
-        private void EnsureArena()
+        private void EnsureArena(
+            LudoCombatSession combatSession,
+            float attackerRow)
         {
-            EnsureFloor();
+            EnsureFloor(combatSession, attackerRow);
             EnsureColiseum();
         }
 
@@ -591,77 +597,186 @@ namespace ElementalLudo.Board
         /// vertex-coloured way as the board. Sits just behind the pieces in Z,
         /// so with the camera tilted it reads as what they're standing on.
         ///
-        /// Kept flat and outline-free — an outline around the ground plane
-        /// would only draw a ring on the horizon.
+        /// A paper-coloured inner circle and ink-separated player ring carry
+        /// the same graphic language as the board without obscuring the dice.
         /// </summary>
-        private void EnsureFloor()
+        private void EnsureFloor(
+            LudoCombatSession combatSession,
+            float attackerRow)
         {
-            if (floorObject != null)
+            if (floorObject == null)
             {
-                return;
-            }
-
-            floorObject = new GameObject("ArenaFloor")
-            {
-                hideFlags = HideFlags.DontSave
-            };
-            floorObject.transform.SetParent(root, false);
-            floorObject.transform.localPosition = Vector3.zero;
-
-            List<Vector3> vertices = new List<Vector3>(160);
-            List<Color> colors = new List<Color>(160);
-            List<int> triangles = new List<int>(160);
-
-            const int segments = 48;
-            for (int segment = 0; segment < segments; segment++)
-            {
-                float a0 = Mathf.PI * 2f * segment / segments;
-                float a1 = Mathf.PI * 2f * (segment + 1) / segments;
-
-                int first = vertices.Count;
-                vertices.Add(new Vector3(0f, 0f, FloorDepth));
-                vertices.Add(RingPoint(a0, floorRadius, FloorDepth));
-                vertices.Add(RingPoint(a1, floorRadius, FloorDepth));
-                colors.Add(sandInner);
-                colors.Add(sandOuter);
-                colors.Add(sandOuter);
-
-                triangles.Add(first);
-                triangles.Add(first + 2);
-                triangles.Add(first + 1);
-            }
-
-            Mesh mesh = new Mesh
-            {
-                name = "ArenaFloor",
-                hideFlags = HideFlags.DontSave
-            };
-            mesh.SetVertices(vertices);
-            mesh.SetColors(colors);
-            mesh.SetTriangles(triangles, 0);
-            mesh.RecalculateBounds();
-            floorObject.AddComponent<MeshFilter>().sharedMesh = mesh;
-
-            MeshRenderer meshRenderer = floorObject.AddComponent<MeshRenderer>();
-            ConfigureRenderer(meshRenderer);
-
-            Shader shader = Shader.Find(FloorShaderName);
-            if (shader != null)
-            {
-                floorMaterial = new Material(shader)
+                floorObject = new GameObject("ArenaFloor")
                 {
-                    name = "Arena Floor",
                     hideFlags = HideFlags.DontSave
                 };
-                meshRenderer.sharedMaterial = floorMaterial;
+                floorObject.transform.SetParent(root, false);
+                floorObject.transform.localPosition = Vector3.zero;
+
+                MeshRenderer meshRenderer =
+                    floorObject.AddComponent<MeshRenderer>();
+                ConfigureRenderer(meshRenderer);
+
+                Shader shader = Shader.Find(FloorShaderName);
+                if (shader != null)
+                {
+                    floorMaterial = new Material(shader)
+                    {
+                        name = "Arena Floor",
+                        hideFlags = HideFlags.DontSave
+                    };
+                    meshRenderer.sharedMaterial = floorMaterial;
+                }
             }
+
+            RebuildFloor(combatSession, attackerRow);
+        }
+
+        private void RebuildFloor(
+            LudoCombatSession combatSession,
+            float attackerRow)
+        {
+            List<Vector3> vertices = new List<Vector3>(2600);
+            List<Color> colors = new List<Color>(2600);
+            List<int> triangles = new List<int>(4000);
+
+            const int segments = 64;
+            AddFloorDisc(
+                vertices,
+                colors,
+                triangles,
+                floorRadius,
+                FloorDepth,
+                sandInner,
+                sandOuter,
+                segments);
+
+            float paperRadius = floorRadius * 0.47f;
+            AddFloorDisc(
+                vertices,
+                colors,
+                triangles,
+                paperRadius,
+                FloorDepth - 0.008f,
+                Paper,
+                Paper,
+                segments);
+            AddFloorRing(
+                vertices,
+                colors,
+                triangles,
+                paperRadius,
+                paperRadius + 0.13f,
+                FloorDepth - 0.014f,
+                _ => Ink,
+                segments);
+
+            Color attackerColor = CombatantColor(
+                combatSession.AttackerToken,
+                LudoBoardVisualStyle.Red);
+            Color defenderColor = CombatantColor(
+                combatSession.DefenderToken,
+                LudoBoardVisualStyle.Blue);
+            Color positiveColor = attackerRow > 0f
+                ? attackerColor
+                : defenderColor;
+            Color negativeColor = attackerRow > 0f
+                ? defenderColor
+                : attackerColor;
+
+            float accentInner = floorRadius * 0.79f;
+            float accentOuter = floorRadius * 0.93f;
+            AddFloorRing(
+                vertices,
+                colors,
+                triangles,
+                accentInner - 0.11f,
+                accentOuter + 0.11f,
+                FloorDepth - 0.010f,
+                _ => Ink,
+                segments);
+            AddFloorRing(
+                vertices,
+                colors,
+                triangles,
+                accentInner,
+                accentOuter,
+                FloorDepth - 0.018f,
+                angle => Color.Lerp(
+                    Mathf.Sin(angle) >= 0f ? positiveColor : negativeColor,
+                    Paper,
+                    0.08f),
+                segments);
+
+            AddCombatantPedestal(
+                vertices,
+                colors,
+                triangles,
+                new Vector2(0f, tokenRowOffset),
+                positiveColor,
+                segments);
+            AddCombatantPedestal(
+                vertices,
+                colors,
+                triangles,
+                new Vector2(0f, -tokenRowOffset),
+                negativeColor,
+                segments);
+
+            AddFloorDiscAt(
+                vertices,
+                colors,
+                triangles,
+                Vector2.zero,
+                0.86f,
+                FloorDepth - 0.040f,
+                Ink,
+                Ink,
+                segments);
+            AddSplitFloorDiscAt(
+                vertices,
+                colors,
+                triangles,
+                Vector2.zero,
+                0.69f,
+                FloorDepth - 0.048f,
+                positiveColor,
+                negativeColor,
+                segments);
+
+            if (floorMesh == null)
+            {
+                floorMesh = new Mesh
+                {
+                    name = "ArenaFloor",
+                    hideFlags = HideFlags.DontSave
+                };
+            }
+            else
+            {
+                floorMesh.Clear();
+            }
+
+            floorMesh.SetVertices(vertices);
+            floorMesh.SetColors(colors);
+            floorMesh.SetTriangles(triangles, 0);
+            floorMesh.RecalculateNormals();
+            floorMesh.RecalculateBounds();
+
+            MeshFilter meshFilter = floorObject.GetComponent<MeshFilter>();
+            if (meshFilter == null)
+            {
+                meshFilter = floorObject.AddComponent<MeshFilter>();
+            }
+
+            meshFilter.sharedMesh = floorMesh;
         }
 
         /// <summary>
         /// The stonework around the arena: the podium wall, a ring of columns
         /// and the arches spanning them.
         ///
-        /// All one mesh so a single outline object can trace the lot. The
+        /// All one mesh so its cel-shaded colour bands stay consistent. The
         /// columns only cover the far arc — a column standing between the
         /// camera and the dice would be authentic and useless.
         /// </summary>
@@ -683,7 +798,7 @@ namespace ElementalLudo.Board
 
             BuildPodiumWall(builder, wallHeight);
 
-            float ringRadius = floorRadius * 1.2f;
+            float ringRadius = floorRadius * 1.14f;
             float columnTopZ = FloorDepth - columnHeight;
             Vector2[] feet = new Vector2[Mathf.Max(columnCount, 2)];
 
@@ -738,49 +853,6 @@ namespace ElementalLudo.Board
                 stoneRenderer.sharedMaterial = stoneMaterial;
             }
 
-            BuildStoneOutline(mesh);
-        }
-
-        /// <summary>
-        /// The black border, drawn the way the terrain does it: a second object
-        /// sharing the same mesh, with the outline shader pushing it out along
-        /// the normals and showing only its back faces.
-        /// </summary>
-        private void BuildStoneOutline(Mesh mesh)
-        {
-            Shader outlineShader = Shader.Find(OutlineShaderName);
-            if (outlineShader == null)
-            {
-                Debug.LogWarning(
-                    $"CombatArena: outline shader '{OutlineShaderName}' not found.",
-                    this);
-                return;
-            }
-
-            GameObject outlineObject = new GameObject("ArenaColiseumOutline")
-            {
-                hideFlags = HideFlags.DontSave
-            };
-            outlineObject.transform.SetParent(stoneObject.transform, false);
-            outlineObject.transform.localPosition = Vector3.zero;
-            outlineObject.AddComponent<MeshFilter>().sharedMesh = mesh;
-
-            MeshRenderer outlineRenderer =
-                outlineObject.AddComponent<MeshRenderer>();
-            ConfigureRenderer(outlineRenderer);
-
-            stoneOutlineMaterial = new Material(outlineShader)
-            {
-                name = "Arena Stone Outline",
-                hideFlags = HideFlags.DontSave
-            };
-            stoneOutlineMaterial.SetColor(OutlineColorId, outlineColor);
-            stoneOutlineMaterial.SetFloat(OutlineWidthId, outlineWidth);
-
-            // The shader shares its vertex path with the animated terrain; this
-            // geometry never moves, so the branch stays off.
-            stoneOutlineMaterial.SetFloat("_TerrainAnimationEnabled", 0f);
-            outlineRenderer.sharedMaterial = stoneOutlineMaterial;
         }
 
         private void BuildPodiumWall(ArenaMeshBuilder builder, float wallHeight)
@@ -946,6 +1018,185 @@ namespace ElementalLudo.Board
                 Mathf.Cos(angle) * radius,
                 Mathf.Sin(angle) * radius,
                 depth);
+        }
+
+        private static void AddFloorDisc(
+            List<Vector3> vertices,
+            List<Color> colors,
+            List<int> triangles,
+            float radius,
+            float depth,
+            Color centerColor,
+            Color edgeColor,
+            int segments)
+        {
+            AddFloorDiscAt(
+                vertices,
+                colors,
+                triangles,
+                Vector2.zero,
+                radius,
+                depth,
+                centerColor,
+                edgeColor,
+                segments);
+        }
+
+        private static void AddFloorDiscAt(
+            List<Vector3> vertices,
+            List<Color> colors,
+            List<int> triangles,
+            Vector2 center,
+            float radius,
+            float depth,
+            Color centerColor,
+            Color edgeColor,
+            int segments)
+        {
+            for (int segment = 0; segment < segments; segment++)
+            {
+                float a0 = Mathf.PI * 2f * segment / segments;
+                float a1 = Mathf.PI * 2f * (segment + 1) / segments;
+                int first = vertices.Count;
+
+                vertices.Add(new Vector3(center.x, center.y, depth));
+                vertices.Add(FloorPoint(center, a0, radius, depth));
+                vertices.Add(FloorPoint(center, a1, radius, depth));
+                colors.Add(centerColor);
+                colors.Add(edgeColor);
+                colors.Add(edgeColor);
+
+                triangles.Add(first);
+                triangles.Add(first + 2);
+                triangles.Add(first + 1);
+            }
+        }
+
+        private static void AddSplitFloorDiscAt(
+            List<Vector3> vertices,
+            List<Color> colors,
+            List<int> triangles,
+            Vector2 center,
+            float radius,
+            float depth,
+            Color positiveColor,
+            Color negativeColor,
+            int segments)
+        {
+            for (int segment = 0; segment < segments; segment++)
+            {
+                float a0 = Mathf.PI * 2f * segment / segments;
+                float a1 = Mathf.PI * 2f * (segment + 1) / segments;
+                Color color = Mathf.Sin((a0 + a1) * 0.5f) >= 0f
+                    ? positiveColor
+                    : negativeColor;
+                int first = vertices.Count;
+
+                vertices.Add(new Vector3(center.x, center.y, depth));
+                vertices.Add(FloorPoint(center, a0, radius, depth));
+                vertices.Add(FloorPoint(center, a1, radius, depth));
+                colors.Add(color);
+                colors.Add(color);
+                colors.Add(color);
+
+                triangles.Add(first);
+                triangles.Add(first + 2);
+                triangles.Add(first + 1);
+            }
+        }
+
+        private static void AddCombatantPedestal(
+            List<Vector3> vertices,
+            List<Color> colors,
+            List<int> triangles,
+            Vector2 center,
+            Color playerColor,
+            int segments)
+        {
+            AddFloorDiscAt(
+                vertices,
+                colors,
+                triangles,
+                center,
+                1.22f,
+                FloorDepth - 0.022f,
+                Ink,
+                Ink,
+                segments);
+            AddFloorDiscAt(
+                vertices,
+                colors,
+                triangles,
+                center,
+                1.08f,
+                FloorDepth - 0.030f,
+                playerColor,
+                LudoBoardVisualStyle.Lighten(playerColor, 0.12f),
+                segments);
+            AddFloorDiscAt(
+                vertices,
+                colors,
+                triangles,
+                center,
+                0.70f,
+                FloorDepth - 0.038f,
+                Paper,
+                Paper,
+                segments);
+        }
+
+        private static Vector3 FloorPoint(
+            Vector2 center,
+            float angle,
+            float radius,
+            float depth)
+        {
+            return new Vector3(
+                center.x + Mathf.Cos(angle) * radius,
+                center.y + Mathf.Sin(angle) * radius,
+                depth);
+        }
+
+        private static void AddFloorRing(
+            List<Vector3> vertices,
+            List<Color> colors,
+            List<int> triangles,
+            float innerRadius,
+            float outerRadius,
+            float depth,
+            System.Func<float, Color> colorAtAngle,
+            int segments)
+        {
+            for (int segment = 0; segment < segments; segment++)
+            {
+                float a0 = Mathf.PI * 2f * segment / segments;
+                float a1 = Mathf.PI * 2f * (segment + 1) / segments;
+                Color color = colorAtAngle((a0 + a1) * 0.5f);
+                int first = vertices.Count;
+
+                vertices.Add(RingPoint(a0, innerRadius, depth));
+                vertices.Add(RingPoint(a1, innerRadius, depth));
+                vertices.Add(RingPoint(a1, outerRadius, depth));
+                vertices.Add(RingPoint(a0, outerRadius, depth));
+                colors.Add(color);
+                colors.Add(color);
+                colors.Add(color);
+                colors.Add(color);
+
+                triangles.Add(first);
+                triangles.Add(first + 1);
+                triangles.Add(first + 2);
+                triangles.Add(first);
+                triangles.Add(first + 2);
+                triangles.Add(first + 3);
+            }
+        }
+
+        private static Color CombatantColor(Token token, Color fallback)
+        {
+            return token != null && token.OwnerStyle != null
+                ? token.OwnerStyle.TokenColor
+                : fallback;
         }
 
         private void BuildSide(List<ArenaDie> dice, int count, float rowY)
@@ -1132,10 +1383,17 @@ namespace ElementalLudo.Board
                 return null;
             }
 
-            GameObject model = Instantiate(style.TokenModel, parent, false);
-            model.hideFlags = HideFlags.DontSave;
-            model.transform.localPosition = Vector3.zero;
-            model.transform.localRotation = Quaternion.Euler(style.TokenModelEulerAngles);
+            // Build through the same component as the board tokens. This keeps
+            // their cartoon material treatment, tint, emission, outline and
+            // idle spin instead of showing the raw imported GLB in the duel.
+            GameObject model = new GameObject("CombatantVisual")
+            {
+                hideFlags = HideFlags.DontSave
+            };
+            model.transform.SetParent(parent, false);
+            TokenVisual visual = model.AddComponent<TokenVisual>();
+            visual.SetStyle(style);
+            visual.SetUseElementalModel(true);
 
             // Nothing here should be clickable; the board's raycasts are still
             // live even while the arena has the screen.
@@ -1213,7 +1471,7 @@ namespace ElementalLudo.Board
             foreach (Renderer modelRenderer in
                      model.GetComponentsInChildren<Renderer>(true))
             {
-                if (modelRenderer == null)
+                if (modelRenderer == null || !modelRenderer.enabled)
                 {
                     continue;
                 }
@@ -1269,7 +1527,7 @@ namespace ElementalLudo.Board
             {
                 ArenaDie die = dice[index];
                 die.Tint = tint;
-                die.Visual.SetAccentColor(tint, 0.35f);
+                die.Visual.SetAccentColor(tint, 0.60f);
 
                 if (die.Value == values[index])
                 {

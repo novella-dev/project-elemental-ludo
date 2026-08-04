@@ -74,7 +74,7 @@ namespace ElementalLudo.Gameplay
                 controller = FindFirstObjectByType<LudoGameController>();
             }
 
-            ResolveBackgroundCamera();
+            RefreshBackgroundCamera();
             if (backgroundCamera != null)
             {
                 lightBackgroundActive =
@@ -101,6 +101,7 @@ namespace ElementalLudo.Gameplay
             }
 
             EnsureStyles();
+            RefreshBackgroundCamera();
             DrawBackgroundToggle();
 
             if (controller == null || !controller.IsInitialized)
@@ -172,7 +173,7 @@ namespace ElementalLudo.Gameplay
 
         private void ApplyBackgroundColor()
         {
-            ResolveBackgroundCamera();
+            RefreshBackgroundCamera();
             if (backgroundCamera != null)
             {
                 backgroundCamera.backgroundColor = lightBackgroundActive
@@ -181,17 +182,44 @@ namespace ElementalLudo.Gameplay
             }
         }
 
-        private void ResolveBackgroundCamera()
+        private void RefreshBackgroundCamera()
         {
-            if (backgroundCamera != null)
+            Camera activeCamera = null;
+            foreach (Camera candidate in Camera.allCameras)
+            {
+                if (candidate == null ||
+                    !candidate.isActiveAndEnabled ||
+                    !candidate.gameObject.activeInHierarchy)
+                {
+                    continue;
+                }
+
+                if (activeCamera == null || candidate.depth > activeCamera.depth)
+                {
+                    activeCamera = candidate;
+                }
+            }
+
+            if (activeCamera == null)
+            {
+                activeCamera = Camera.main;
+            }
+
+            if (activeCamera == null)
+            {
+                activeCamera = FindFirstObjectByType<Camera>();
+            }
+
+            if (backgroundCamera == activeCamera)
             {
                 return;
             }
 
-            backgroundCamera = Camera.main;
-            if (backgroundCamera == null)
+            backgroundCamera = activeCamera;
+            if (backgroundCamera != null)
             {
-                backgroundCamera = FindFirstObjectByType<Camera>();
+                lightBackgroundActive =
+                    backgroundCamera.backgroundColor.grayscale >= 0.5f;
             }
         }
 
@@ -294,12 +322,11 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
-            // A strip along the bottom, not a centred box: the dice and the
-            // combatants are the point now that they exist in 3D, and a panel
-            // in the middle would sit right on top of them.
+            // Right aligned so the near combatant and its coloured pedestal
+            // stay visible instead of disappearing behind the controls.
             GUILayout.BeginArea(
                 new Rect(
-                    (Screen.width - width) * 0.5f,
+                    Screen.width - width - PanelMargin,
                     Screen.height - height - PanelMargin,
                     width,
                     height),
@@ -1141,6 +1168,12 @@ namespace ElementalLudo.Gameplay
                 alignment = TextAnchor.MiddleCenter,
                 fontSize = 12
             };
+            backgroundButtonStyle.normal.background = GetSolidTexture(
+                new Color(0.03f, 0.04f, 0.05f, 0.82f));
+            backgroundButtonStyle.normal.textColor = Color.white;
+            backgroundButtonStyle.hover.background = GetSolidTexture(
+                new Color(0.08f, 0.10f, 0.12f, 0.94f));
+            backgroundButtonStyle.hover.textColor = Color.white;
 
             stylesReady = true;
         }
