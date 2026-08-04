@@ -56,6 +56,8 @@ namespace ElementalLudo.Gameplay
         private GUIStyle actionCardStyle;
         private GUIStyle primaryButtonStyle;
         private GUIStyle endMatchButtonStyle;
+        private GUIStyle standButtonStyle;
+        private GUIStyle standWinningButtonStyle;
         private GUIStyle toggleOnStyle;
         private GUIStyle toggleOffStyle;
         private GUIStyle winnerStyle;
@@ -348,6 +350,11 @@ namespace ElementalLudo.Gameplay
 
             GUILayout.Space(6f);
             DrawCombatControls(session);
+
+            // Drawn on top of the flow rather than inside it, pinned to the
+            // panel's own corner: it needs to stay in the same spot duel after
+            // duel so the player can find it without looking.
+            DrawStandButton(session, width, height);
             GUILayout.EndArea();
         }
 
@@ -429,8 +436,45 @@ namespace ElementalLudo.Gameplay
                       $"({hand.RerollsLeft} restantes)"
                     : "Tu turno — sin relanzamientos",
                 statusStyle);
+        }
 
-            if (GUILayout.Button("Plantarse", primaryButtonStyle, GUILayout.Width(140f)))
+        /// <summary>
+        /// Pinned to the panel's bottom-right corner rather than following the
+        /// rest of the layout, so it lands in the same place duel after duel.
+        ///
+        /// Grey by default; green with the label swapped to VICTORIA the
+        /// instant the player's own score would already win the fight — which
+        /// only has a real answer on the defender's turn, once
+        /// <see cref="LudoCombatSession.ScoreToBeat"/> is fixed. On the
+        /// attacker's turn the defender's dice exist but haven't been played
+        /// yet, and the panel deliberately keeps that score hidden elsewhere
+        /// in this view; colouring the button off it here would leak the same
+        /// information through the back door.
+        /// </summary>
+        private void DrawStandButton(LudoCombatSession session, float panelWidth, float panelHeight)
+        {
+            if (!session.IsHumanTurn)
+            {
+                return;
+            }
+
+            bool winning =
+                session.Phase == LudoCombatPhase.DefenderTurn &&
+                session.CurrentHand.Evaluate().Score >= session.ScoreToBeat;
+
+            const float buttonWidth = 150f;
+            const float buttonHeight = 40f;
+            const float margin = 14f;
+            Rect buttonRect = new Rect(
+                panelWidth - buttonWidth - margin,
+                panelHeight - buttonHeight - margin,
+                buttonWidth,
+                buttonHeight);
+
+            if (GUI.Button(
+                    buttonRect,
+                    winning ? "VICTORIA" : "Plantarse",
+                    winning ? standWinningButtonStyle : standButtonStyle))
             {
                 controller.ConfirmCombatHand();
             }
@@ -979,6 +1023,41 @@ namespace ElementalLudo.Gameplay
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleCenter,
                 padding = new RectOffset(12, 12, 14, 14),
+                normal =
+                {
+                    background = GetSolidTexture(new Color(0.22f, 0.72f, 0.42f, 0.95f)),
+                    textColor = Color.white
+                },
+                hover =
+                {
+                    background = GetSolidTexture(new Color(0.27f, 0.8f, 0.48f, 0.95f)),
+                    textColor = Color.white
+                }
+            };
+
+            // Grey while standing pat is just an option, green the moment it
+            // wins the duel — the colour is the whole signal, so it stays
+            // deliberately dull until it means something.
+            standButtonStyle = new GUIStyle(GUI.skin.button)
+            {
+                fontSize = 13,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                padding = new RectOffset(16, 16, 10, 10),
+                normal =
+                {
+                    background = GetSolidTexture(new Color(0.34f, 0.36f, 0.40f, 0.95f)),
+                    textColor = new Color(0.88f, 0.90f, 0.93f)
+                },
+                hover =
+                {
+                    background = GetSolidTexture(new Color(0.42f, 0.44f, 0.49f, 0.95f)),
+                    textColor = Color.white
+                }
+            };
+
+            standWinningButtonStyle = new GUIStyle(standButtonStyle)
+            {
                 normal =
                 {
                     background = GetSolidTexture(new Color(0.22f, 0.72f, 0.42f, 0.95f)),
