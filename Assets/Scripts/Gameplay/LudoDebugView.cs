@@ -40,6 +40,7 @@ namespace ElementalLudo.Gameplay
         private LudoGameMode setupMode;
         private bool setupElementalRules;
         private int setupSeatIndex;
+        private LudoElement setupRunElement = LudoElement.Fire;
         private bool setupDefaultsApplied;
 
         private readonly Dictionary<Color, Texture2D> textureCache =
@@ -125,6 +126,21 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
+            // The reward screen and the map are both between-fights states, so
+            // they take the whole screen rather than sitting over a board that
+            // is not being played.
+            if (controller.IsRewardPending)
+            {
+                DrawRewardScreen();
+                return;
+            }
+
+            if (controller.IsRunMapVisible)
+            {
+                DrawRunMap();
+                return;
+            }
+
             Color playerColor = controller.ActivePlayer.TokenColor;
 
             GUILayout.BeginArea(
@@ -149,6 +165,167 @@ namespace ElementalLudo.Gameplay
 
             DrawUpgradesPanel();
             DrawHistoryPanel();
+        }
+
+        // ------------------------------------------------------------------
+        // Run
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// The map between fights: every stage laid out front to back, with the
+        /// reachable nodes live and the rest shown but dead, so the player can
+        /// see the shape of what is ahead and not just their next two options.
+        /// </summary>
+        private void DrawRunMap()
+        {
+            LudoRunState run = controller.CurrentRun;
+            if (run == null)
+            {
+                return;
+            }
+
+            const float width = 720f;
+            const float height = 470f;
+            GUILayout.BeginArea(
+                new Rect(
+                    (Screen.width - width) * 0.5f,
+                    (Screen.height - height) * 0.5f,
+                    width,
+                    height),
+                panelStyle);
+
+            GUILayout.Label("LA AVENTURA", titleStyle);
+            GUILayout.Label(
+                $"{LudoElementInfo.DisplayName(run.Element)}  ·  " +
+                LudoRunInfo.StatusLine(run),
+                subtitleStyle);
+            GUILayout.Space(8f);
+
+            if (run.IsOver)
+            {
+                DrawRunEnding(run);
+                GUILayout.EndArea();
+                return;
+            }
+
+            for (int stage = 0; stage < run.Map.StageCount; stage++)
+            {
+                DrawRunStage(run, stage);
+            }
+
+            GUILayout.EndArea();
+        }
+
+        private void DrawRunStage(LudoRunState run, int stage)
+        {
+            IReadOnlyList<LudoRunNode> nodes = run.Map.Stage(stage);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"{stage + 1}", hintStyle, GUILayout.Width(18f));
+
+            foreach (LudoRunNode node in nodes)
+            {
+                bool here = run.IsCurrent(node);
+                bool reachable = run.IsChoice(node);
+
+                string label = here
+                    ? $"◆ {LudoRunInfo.NodeName(node.Kind)}"
+                    : LudoRunInfo.NodeName(node.Kind);
+
+                // Only the offered nodes respond; the rest are there to be read.
+                GUI.enabled = reachable;
+                if (GUILayout.Button(
+                        label,
+                        here || reachable ? toggleOnStyle : toggleOffStyle,
+                        GUILayout.Width(150f)))
+                {
+                    controller.TryEnterNode(node);
+                }
+
+                GUI.enabled = true;
+            }
+
+            GUILayout.EndHorizontal();
+
+            // The summary follows the row it belongs to rather than crowding
+            // each button, which would not fit three across.
+            if (stage == run.Stage + 1 || (stage == run.Stage && run.Choices.Count == 0))
+            {
+                foreach (LudoRunNode node in nodes)
+                {
+                    if (run.IsChoice(node) || run.IsCurrent(node))
+                    {
+                        GUILayout.Label(
+                            $"· {LudoRunInfo.NodeName(node.Kind)}: " +
+                            LudoRunInfo.NodeSummary(node.Kind),
+                            hintStyle);
+                    }
+                }
+            }
+
+            GUILayout.Space(4f);
+        }
+
+        private void DrawRunEnding(LudoRunState run)
+        {
+            GUILayout.Label(
+                run.Status == LudoRunStatus.Won ? "VICTORIA" : "DERROTA",
+                winnerStyle);
+            GUILayout.Label(controller.StatusMessage, hintStyle);
+            GUILayout.Space(10f);
+
+            if (GUILayout.Button("Volver al menú", primaryButtonStyle))
+            {
+                controller.ReturnToMenu();
+            }
+        }
+
+        /// <summary>
+        /// The pick-one-of-three between fights. This is where a run's build
+        /// actually gets decided, so it takes the screen on its own.
+        /// </summary>
+        private void DrawRewardScreen()
+        {
+            IReadOnlyList<LudoUpgrade> offer = controller.RewardOffer;
+
+            const float width = 660f;
+            const float height = 360f;
+            GUILayout.BeginArea(
+                new Rect(
+                    (Screen.width - width) * 0.5f,
+                    (Screen.height - height) * 0.5f,
+                    width,
+                    height),
+                panelStyle);
+
+            GUILayout.Label("ELIGE UNA MEJORA", titleStyle);
+            GUILayout.Label(
+                "Se activan cuando tú quieras y se gastan al usarse.",
+                subtitleStyle);
+            GUILayout.Space(10f);
+
+            for (int index = 0; index < offer.Count; index++)
+            {
+                LudoUpgrade upgrade = offer[index];
+
+                GUILayout.BeginVertical(panelStyle);
+                if (GUILayout.Button(
+                        LudoUpgradeInfo.DisplayName(upgrade.Kind),
+                        primaryButtonStyle))
+                {
+                    controller.ClaimReward(index);
+                }
+
+                GUILayout.Label(LudoUpgradeInfo.Describe(upgrade), hintStyle);
+                GUILayout.Label(
+                    $"{upgrade.Charges} usos · " +
+                    $"{LudoUpgradeInfo.ScopeName(upgrade.Scope)}",
+                    hintStyle);
+                GUILayout.EndVertical();
+                GUILayout.Space(6f);
+            }
+
+            GUILayout.EndArea();
         }
 
         /// <summary>
@@ -683,9 +860,79 @@ namespace ElementalLudo.Gameplay
             GUILayout.EndHorizontal();
             GUILayout.EndArea();
 
-            if (start)
+            if (!start)
             {
-                controller.StartMatch(BuildMatchSettings());
+                return;
+            }
+
+            // Adventure is the run now: picking it opens a map rather than
+            // dropping straight onto a board. Every other mode is still a
+            // single match started the way it always was.
+            if (setupMode == LudoGameMode.Adventure)
+            {
+                controller.StartRun(SelectedRunElement());
+                return;
+            }
+
+            controller.StartMatch(BuildMatchSettings());
+        }
+
+        /// <summary>
+        /// The element the run starts with, clamped to what has been unlocked
+        /// so a stale selection can never smuggle in a locked one.
+        /// </summary>
+        private LudoElement SelectedRunElement()
+        {
+            LudoElementProgress progress = controller.ElementProgress;
+            foreach (LudoElement element in progress.Unlocked())
+            {
+                if (element == setupRunElement)
+                {
+                    return element;
+                }
+            }
+
+            foreach (LudoElement element in progress.Unlocked())
+            {
+                return element;
+            }
+
+            return LudoElement.Fire;
+        }
+
+        /// <summary>
+        /// Which element to take into the run. Locked ones are shown greyed
+        /// rather than hidden, so the player can see what finishing a run is
+        /// worth.
+        /// </summary>
+        private void DrawRunElementPicker()
+        {
+            LudoElementProgress progress = controller.ElementProgress;
+
+            GUILayout.Label("TU ELEMENTO", sectionLabelStyle);
+            GUILayout.Label(
+                progress.AllUnlocked
+                    ? "Los tienes todos."
+                    : "Completa una run para desbloquear el siguiente.",
+                hintStyle);
+            GUILayout.Space(4f);
+
+            foreach (LudoElement element in progress.UnlockOrder)
+            {
+                bool unlocked = progress.IsUnlocked(element);
+                bool selected = unlocked && element == SelectedRunElement();
+
+                GUI.enabled = unlocked;
+                if (GUILayout.Button(
+                        unlocked
+                            ? LudoElementInfo.DisplayName(element)
+                            : $"{LudoElementInfo.DisplayName(element)}  (bloqueado)",
+                        selected ? toggleOnStyle : toggleOffStyle))
+                {
+                    setupRunElement = element;
+                }
+
+                GUI.enabled = true;
             }
         }
 
@@ -816,9 +1063,19 @@ namespace ElementalLudo.Gameplay
             }
 
             GUILayout.Space(12f);
-            GUILayout.Label(hasAI ? "TU COLOR" : "COLORES EN JUEGO", sectionLabelStyle);
-            GUILayout.Space(4f);
-            DrawSeatPicker(hasAI);
+
+            // Adventure picks its seat by element, and that choice is also the
+            // meta-progression, so it replaces the colour picker entirely.
+            if (setupMode == LudoGameMode.Adventure)
+            {
+                DrawRunElementPicker();
+            }
+            else
+            {
+                GUILayout.Label(hasAI ? "TU COLOR" : "COLORES EN JUEGO", sectionLabelStyle);
+                GUILayout.Space(4f);
+                DrawSeatPicker(hasAI);
+            }
 
             GUILayout.FlexibleSpace();
             return GUILayout.Button("EMPEZAR", primaryButtonStyle);

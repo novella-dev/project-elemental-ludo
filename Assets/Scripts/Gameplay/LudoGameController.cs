@@ -54,6 +54,13 @@ namespace ElementalLudo.Gameplay
         [Tooltip("Pause between each AI reroll, so the player can follow what it kept.")]
         [SerializeField] private float combatRerollDelay = 0.45f;
 
+        /// <summary>
+        /// Stages in a run: a reward to open with, four choices, and the boss.
+        /// Short on purpose — a run should finish in one sitting, and it can be
+        /// lengthened later without changing anything else.
+        /// </summary>
+        private const int RunStageCount = 6;
+
         private const int MaxMoveHistoryEntries = 30;
         private const float SharedCellOffsetMagnitude = 0.55f;
 
@@ -101,8 +108,17 @@ namespace ElementalLudo.Gameplay
         private LudoCombatReport combatReport;
         private LudoCombatSession combatSession;
 
-        // Survives individual duels but not a match: a new run starts empty.
+        // Used when Adventure is played outside a run. Inside one the run owns
+        // the inventory, since upgrades belong to the run rather than to any
+        // single match — see ActiveUpgrades.
         private readonly LudoUpgradeInventory upgrades = new LudoUpgradeInventory();
+
+        private readonly LudoElementProgress elementProgress = new LudoElementProgress();
+        private readonly List<LudoUpgrade> rewardOffer = new List<LudoUpgrade>(3);
+        private LudoRunState currentRun;
+
+        /// <summary>True while a fight the run sent us into is being played.</summary>
+        private bool runNodeActive;
         private bool combatTurnConfirmed;
         private int activePlayerIndex;
         private int rolledValue;
@@ -146,15 +162,39 @@ namespace ElementalLudo.Gameplay
         public LudoCombatSession CombatSession => combatSession;
 
         /// <summary>
-        /// What the player is carrying this run. Owned by the controller
-        /// because it outlives any one duel; A3 will fill it from the run
-        /// instead of the debug grant that seeds it today.
+        /// What the player is carrying. Comes from the run when there is one,
+        /// since upgrades are the run's rather than any single match's.
         /// </summary>
-        public LudoUpgradeInventory Upgrades => upgrades;
+        public LudoUpgradeInventory Upgrades => ActiveUpgrades;
 
-        public bool TryArmUpgrade(int slotIndex) => upgrades.TryArm(slotIndex);
+        private LudoUpgradeInventory ActiveUpgrades =>
+            currentRun != null ? currentRun.Upgrades : upgrades;
 
-        public bool TryDisarmUpgrade(int slotIndex) => upgrades.TryDisarm(slotIndex);
+        public bool TryArmUpgrade(int slotIndex) => ActiveUpgrades.TryArm(slotIndex);
+
+        public bool TryDisarmUpgrade(int slotIndex) => ActiveUpgrades.TryDisarm(slotIndex);
+
+        // ------------------------------------------------------------------
+        // Run
+        // ------------------------------------------------------------------
+
+        /// <summary>The run in progress, or null outside one.</summary>
+        public LudoRunState CurrentRun => currentRun;
+
+        /// <summary>Which elements Adventure has been unlocked with.</summary>
+        public LudoElementProgress ElementProgress => elementProgress;
+
+        /// <summary>The upgrades on offer right now, or empty.</summary>
+        public IReadOnlyList<LudoUpgrade> RewardOffer => rewardOffer;
+
+        public bool IsRewardPending => rewardOffer.Count > 0;
+
+        /// <summary>
+        /// True when the map should be on screen: inside a run, with no fight
+        /// running and no reward waiting to be taken.
+        /// </summary>
+        public bool IsRunMapVisible =>
+            currentRun != null && !runNodeActive && !IsRewardPending;
 
         public bool IsInitialized => initialized;
         public bool IsDiceRolling => dice != null && dice.IsRolling;
@@ -362,6 +402,10 @@ namespace ElementalLudo.Gameplay
             CancelPendingDecisions();
             AbortCombat();
 
+            // Leaving for the menu gives the run up, since there is nowhere to
+            // put a half-finished one until A7 can save it.
+            AbandonRun();
+
             awaitingSetup = true;
             phase = LudoTurnPhase.AwaitingRoll;
             rolledValue = 0;
@@ -376,15 +420,19 @@ namespace ElementalLudo.Gameplay
         }
 
         /// <summary>
-        /// Fills the player's inventory at the start of an Adventure match.
+        /// Fills the inventory for an Adventure match played outside a run.
         ///
-        /// A placeholder: A3 will hand upgrades out as rewards along a run, and
-        /// this whole method goes away when it does. Granting one of each for
-        /// now is what makes the system testable before the run exists to feed
-        /// it. Other modes get nothing, so upgrades stay an Adventure feature.
+        /// Inside a run this does nothing: the run owns the inventory and fills
+        /// it from rewards, and clearing it here would wipe everything the
+        /// player had earned on the way to this node.
         /// </summary>
         private void SeedUpgrades(LudoGameMode mode)
         {
+            if (currentRun != null)
+            {
+                return;
+            }
+
             upgrades.Clear();
             if (mode != LudoGameMode.Adventure)
             {
@@ -395,6 +443,216 @@ namespace ElementalLudo.Gameplay
             {
                 upgrades.Grant(kind);
             }
+        }
+
+        /// <summary>
+        /// Opens a run with the given element and drops the player on its first
+        /// node, which is always a reward.
+        /// </summary>
+        public void StartRun(LudoElement element)
+        {
+            if (!initialized)
+            {
+                return;
+            }
+
+            AbandonRun();
+
+            currentRun = new LudoRunState(
+                element,
+                LudoRunMap.Generate(RunStageCount, UnityEngine.Random.Range(0, int.MaxValue)));
+            awaitingSetup = false;
+            statusMessage = "Comienza la aventura.";
+            LogMove($"Nueva run con {LudoElementInfo.DisplayName(element)}.");
+            EnterCurrentRunNode();
+        }
+
+        /// <summary>Drops the run without touching the elements already unlocked.</summary>
+        public void AbandonRun()
+        {
+            currentRun = null;
+            runNodeActive = false;
+            rewardOffer.Clear();
+        }
+
+        /// <summary>Walks to one of the nodes the map is offering.</summary>
+        public bool TryEnterNode(LudoRunNode node)
+        {
+            if (currentRun == null || runNodeActive || IsRewardPending)
+            {
+                return false;
+            }
+
+            if (!currentRun.TryMoveTo(node))
+            {
+                return false;
+            }
+
+            EnterCurrentRunNode();
+            return true;
+        }
+
+        /// <summary>
+        /// Starts whatever the node the player is standing on asks for. A
+        /// reward node only puts an offer on screen; everything else is a
+        /// fight.
+        /// </summary>
+        private void EnterCurrentRunNode()
+        {
+            LudoRunNode node = currentRun.CurrentNode;
+            if (node.Kind == LudoRunNodeKind.Reward)
+            {
+                OfferReward(node.Kind);
+                return;
+            }
+
+            runNodeActive = true;
+            if (node.Kind == LudoRunNodeKind.Duel)
+            {
+                StartCoroutine(PlayRunDuel());
+                return;
+            }
+
+            StartMatch(BuildRunMatchSettings(node.Kind));
+        }
+
+        /// <summary>
+        /// A loose duel: no board, no match, just the arena. Uses the seats'
+        /// existing tokens, which are found in the scene at startup and so are
+        /// there whether a match is running or not.
+        /// </summary>
+        private IEnumerator PlayRunDuel()
+        {
+            int playerSeat = SeatForElement(currentRun.Element);
+            int rivalSeat = (playerSeat + 1 + UnityEngine.Random.Range(0, players.Count - 1))
+                % players.Count;
+
+            humanSeatIndex = playerSeat;
+            Token playerToken = players[playerSeat].Tokens[0];
+            Token rivalToken = players[rivalSeat].Tokens[0];
+
+            // The player attacks, so they throw first and the rival answers
+            // knowing the score — the same shape as a capture on the board.
+            yield return PlayDuel(playerToken, rivalToken);
+
+            bool won = combatReport.HumanWon;
+            LogMove(won ? "Ganas el combate." : "Pierdes el combate.");
+            FinishRunNode(won);
+        }
+
+        /// <summary>
+        /// Settles the node just played and moves the run on: a loss ends it, a
+        /// win either finishes the run or puts a reward on screen.
+        /// </summary>
+        private void FinishRunNode(bool won)
+        {
+            runNodeActive = false;
+            if (currentRun == null)
+            {
+                return;
+            }
+
+            LudoRunNodeKind kind = currentRun.CurrentNode.Kind;
+            currentRun.ResolveCurrentNode(won);
+
+            if (currentRun.Status == LudoRunStatus.Won)
+            {
+                LudoElement? unlocked = elementProgress.UnlockNext();
+                statusMessage = unlocked.HasValue
+                    ? $"¡Run completada! Desbloqueas {LudoElementInfo.DisplayName(unlocked.Value)}."
+                    : "¡Run completada!";
+                LogMove(statusMessage);
+                return;
+            }
+
+            if (currentRun.Status == LudoRunStatus.Lost)
+            {
+                statusMessage = "La run termina aquí.";
+                LogMove(statusMessage);
+                return;
+            }
+
+            OfferReward(kind);
+        }
+
+        /// <summary>
+        /// Puts three upgrades on the table. Elites offer a pick from the whole
+        /// catalog; everything else draws from a shorter list, so the strongest
+        /// upgrades stay tied to the harder fights.
+        /// </summary>
+        private void OfferReward(LudoRunNodeKind kind)
+        {
+            rewardOffer.Clear();
+            List<LudoUpgradeKind> pool = new List<LudoUpgradeKind>(
+                LudoUpgradeCatalog.AllKinds);
+
+            if (kind != LudoRunNodeKind.Elite)
+            {
+                pool.Remove(LudoUpgradeKind.ExtraDie);
+            }
+
+            for (int pick = 0; pick < 3 && pool.Count > 0; pick++)
+            {
+                int index = UnityEngine.Random.Range(0, pool.Count);
+                rewardOffer.Add(LudoUpgradeCatalog.Default(pool[index]));
+                pool.RemoveAt(index);
+            }
+        }
+
+        /// <summary>Takes one of the offered upgrades and settles the node.</summary>
+        public bool ClaimReward(int index)
+        {
+            if (currentRun == null || index < 0 || index >= rewardOffer.Count)
+            {
+                return false;
+            }
+
+            LudoUpgrade upgrade = rewardOffer[index];
+            currentRun.Upgrades.Grant(upgrade);
+            rewardOffer.Clear();
+            LogMove($"Recompensa: {LudoUpgradeInfo.DisplayName(upgrade.Kind)}.");
+
+            // A reward node is only settled once its reward is taken; a fight
+            // node was already settled when it was won.
+            if (currentRun.Status == LudoRunStatus.AtNode)
+            {
+                currentRun.ResolveCurrentNode(true);
+            }
+
+            return true;
+        }
+
+        private LudoMatchSettings BuildRunMatchSettings(LudoRunNodeKind kind)
+        {
+            // Elites and the boss play at Normal; ordinary matches stay Easy, so
+            // the map's shape is what sets the difficulty curve.
+            LudoAIDifficulty difficulty =
+                kind == LudoRunNodeKind.Elite || kind == LudoRunNodeKind.Boss
+                    ? LudoAIDifficulty.Normal
+                    : LudoAIDifficulty.Easy;
+
+            // The seat is named by element, not by index: that is how the menu
+            // identifies it too, and it keeps the run's chosen element and the
+            // seat it plays as the same fact.
+            return new LudoMatchSettings(
+                LudoGameMode.Adventure,
+                currentRun.Element,
+                difficulty,
+                true);
+        }
+
+        /// <summary>The seat holding a given element, or the first one.</summary>
+        private int SeatForElement(LudoElement element)
+        {
+            for (int index = 0; index < players.Count; index++)
+            {
+                if (players[index].Element == element)
+                {
+                    return index;
+                }
+            }
+
+            return 0;
         }
 
         /// <summary>
@@ -910,7 +1168,7 @@ namespace ElementalLudo.Gameplay
         /// </summary>
         private void ConsumeBarrierExemptionIfUsed()
         {
-            if (!upgrades.IsArmed(LudoUpgradeKind.BarrierExemption))
+            if (!ActiveUpgrades.IsArmed(LudoUpgradeKind.BarrierExemption))
             {
                 return;
             }
@@ -929,7 +1187,7 @@ namespace ElementalLudo.Gameplay
 
             if (wouldHaveBeenForced)
             {
-                upgrades.TryConsume(LudoUpgradeKind.BarrierExemption);
+                ActiveUpgrades.TryConsume(LudoUpgradeKind.BarrierExemption);
                 LogMove(
                     $"{SpanishColorName(ActivePlayer.PlayerId)} usa Barrera firme: " +
                     "el 6 no obliga a romperla.");
@@ -946,8 +1204,8 @@ namespace ElementalLudo.Gameplay
                 phase != LudoTurnPhase.AwaitingAction ||
                 !IsActiveSeatHuman ||
                 actionPerformed ||
-                !upgrades.IsArmed(LudoUpgradeKind.MovementRethrow) ||
-                !upgrades.TryConsume(LudoUpgradeKind.MovementRethrow))
+                !ActiveUpgrades.IsArmed(LudoUpgradeKind.MovementRethrow) ||
+                !ActiveUpgrades.TryConsume(LudoUpgradeKind.MovementRethrow))
             {
                 return false;
             }
@@ -1032,7 +1290,7 @@ namespace ElementalLudo.Gameplay
         {
             bool exempt =
                 IsActiveSeatHuman &&
-                upgrades.IsArmed(LudoUpgradeKind.BarrierExemption);
+                ActiveUpgrades.IsArmed(LudoUpgradeKind.BarrierExemption);
 
             return new LudoRulesContext(
                 elementalModeEnabled,
@@ -1437,6 +1695,27 @@ namespace ElementalLudo.Gameplay
                 settings.Permadeath
                     ? $"{DisplayName(winner.PlayerId)} wins!"
                     : $"{DisplayName(winner.PlayerId)} wins! All four tokens reached the goal.";
+
+            // A run only cares whether the seat the player was in took it.
+            ReportRunNodeResult(
+                humanSeatIndex >= 0 &&
+                humanSeatIndex < players.Count &&
+                winner == players[humanSeatIndex].Style);
+        }
+
+        /// <summary>
+        /// Hands a finished match's result back to the run, if the match was
+        /// one the run started. Matches played straight from the menu report
+        /// nothing and leave the run alone.
+        /// </summary>
+        private void ReportRunNodeResult(bool humanWon)
+        {
+            if (currentRun == null || !runNodeActive)
+            {
+                return;
+            }
+
+            FinishRunNode(humanWon);
         }
 
         private Vector3 GetRoutePosition(
@@ -1624,12 +1903,12 @@ namespace ElementalLudo.Gameplay
                 attackerToken.OwnerStyle == humanStyle,
                 defenderToken.OwnerStyle == humanStyle,
                 settings.ElementalRules,
-                upgrades);
+                ActiveUpgrades);
 
             // Spent only now that the duel is definitely happening and the
             // hands have already been built from them. Charging earlier would
             // burn an armed upgrade on a capture that never became a duel.
-            upgrades.ConsumeArmedDuelUpgrades();
+            ActiveUpgrades.ConsumeArmedDuelUpgrades();
 
             combatVisible = true;
             statusMessage = "¡Duelo de dados!";
@@ -1870,6 +2149,7 @@ namespace ElementalLudo.Gameplay
             SetTokenInteractionStates(false, true);
             statusMessage = "You lost every token.";
             LogMove("Te has quedado sin fichas. Fin de la partida.");
+            ReportRunNodeResult(false);
         }
 
         /// <summary>

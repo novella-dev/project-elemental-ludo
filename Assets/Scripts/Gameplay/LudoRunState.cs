@@ -69,6 +69,18 @@ namespace ElementalLudo.Gameplay
         public IReadOnlyList<LudoRunNode> Choices => choices;
 
         /// <summary>
+        /// Whether a node is one the player may walk to now. Offered as a
+        /// method because the UI asks it once per node every frame, and going
+        /// through the list interface would mean LINQ and an allocation each
+        /// time.
+        /// </summary>
+        public bool IsChoice(LudoRunNode node) => choices.Contains(node);
+
+        /// <summary>Whether the player is standing on this node.</summary>
+        public bool IsCurrent(LudoRunNode node) =>
+            node != null && node.Stage == Stage && node.Lane == Lane;
+
+        /// <summary>
         /// Settles the current node. Losing anywhere ends the run; winning the
         /// last stage wins it, and winning anywhere else opens up the choice of
         /// where to go next.
