@@ -19,6 +19,7 @@ namespace ElementalLudo.Gameplay
         private const float RulesPanelWidth = 300f;
         private const float HistoryPanelWidth = 340f;
         private const float HistoryPanelHeight = 300f;
+        private const float UpgradePanelHeight = 330f;
         private const int MaxHistoryEntries = 10;
 
         [SerializeField] private LudoGameController controller;
@@ -146,7 +147,89 @@ namespace ElementalLudo.Gameplay
                 DrawElementalRulesPanel();
             }
 
+            DrawUpgradesPanel();
             DrawHistoryPanel();
+        }
+
+        /// <summary>
+        /// What the player is carrying and what they have switched on.
+        ///
+        /// Sits on the left under the main panel, and only appears when there
+        /// is anything to show — every mode but Adventure grants nothing, so
+        /// this stays invisible there rather than showing an empty box.
+        /// </summary>
+        private void DrawUpgradesPanel()
+        {
+            IReadOnlyList<LudoUpgradeSlot> slots = controller.Upgrades.Slots;
+            if (slots.Count == 0)
+            {
+                return;
+            }
+
+            GUILayout.BeginArea(
+                new Rect(
+                    PanelMargin,
+                    PanelMargin + 570f,
+                    PanelWidth,
+                    UpgradePanelHeight),
+                panelStyle);
+
+            GUILayout.Label("MEJORAS", sectionLabelStyle);
+            GUILayout.Label(
+                "Se activan y se gastan al usarse. No están siempre activas.",
+                hintStyle);
+            GUILayout.Space(6f);
+
+            for (int index = 0; index < slots.Count; index++)
+            {
+                DrawUpgradeRow(slots[index], index);
+            }
+
+            GUILayout.EndArea();
+        }
+
+        private void DrawUpgradeRow(LudoUpgradeSlot slot, int index)
+        {
+            LudoUpgrade upgrade = slot.Upgrade;
+            bool spent = slot.ChargesLeft <= 0;
+
+            GUILayout.BeginHorizontal();
+
+            // Disabled rather than hidden once spent, so the player can still
+            // see what they had and what it did.
+            GUI.enabled = !spent;
+            string label = slot.Armed
+                ? $"◆ {LudoUpgradeInfo.DisplayName(upgrade.Kind)}"
+                : LudoUpgradeInfo.DisplayName(upgrade.Kind);
+
+            if (GUILayout.Button(
+                    label,
+                    slot.Armed ? toggleOnStyle : toggleOffStyle,
+                    GUILayout.Width(168f)))
+            {
+                if (slot.Armed)
+                {
+                    controller.TryDisarmUpgrade(index);
+                }
+                else
+                {
+                    controller.TryArmUpgrade(index);
+                }
+            }
+
+            GUI.enabled = true;
+            GUILayout.Space(6f);
+            GUILayout.BeginVertical();
+            GUILayout.Label(LudoUpgradeInfo.Describe(upgrade), hintStyle);
+            GUILayout.Label(
+                spent
+                    ? "Agotada"
+                    : $"{slot.ChargesLeft}/{upgrade.Charges} usos · " +
+                      $"{LudoUpgradeInfo.ScopeName(upgrade.Scope)}",
+                hintStyle);
+            GUILayout.EndVertical();
+            GUILayout.EndHorizontal();
+            GUILayout.Space(4f);
         }
 
         private void DrawBackgroundToggle()
@@ -922,6 +1005,28 @@ namespace ElementalLudo.Gameplay
             GUILayout.Label("You can also click the die on the board.", hintStyle);
         }
 
+        /// <summary>
+        /// Offered only while a Repetir tirada is armed. Drawn above the action
+        /// list because it replaces the roll those actions came from — once one
+        /// is taken there is nothing left to rethrow.
+        /// </summary>
+        private void DrawMovementRethrowButton()
+        {
+            if (!controller.Upgrades.IsArmed(LudoUpgradeKind.MovementRethrow))
+            {
+                return;
+            }
+
+            if (GUILayout.Button(
+                    $"Repetir tirada (sacaste {controller.RolledValue})",
+                    primaryButtonStyle))
+            {
+                controller.RequestMovementRethrow();
+            }
+
+            GUILayout.Space(6f);
+        }
+
         private void DrawAwaitingAction(Color playerColor)
         {
             if (!controller.IsActiveSeatHuman)
@@ -929,6 +1034,8 @@ namespace ElementalLudo.Gameplay
                 GUILayout.Label("La IA está eligiendo su jugada...", statusStyle);
                 return;
             }
+
+            DrawMovementRethrowButton();
 
             GUILayout.Label("LEGAL ACTIONS", sectionLabelStyle);
             GUILayout.Space(4f);

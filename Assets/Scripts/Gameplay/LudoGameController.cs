@@ -60,6 +60,10 @@ namespace ElementalLudo.Gameplay
         private readonly List<LudoPlayerState> players = new List<LudoPlayerState>(4);
         private readonly List<LudoLegalAction> legalActions =
             new List<LudoLegalAction>(4);
+
+        // For what-if queries that must not disturb the turn's real options.
+        private readonly List<LudoLegalAction> scratchActions =
+            new List<LudoLegalAction>(4);
         private readonly Dictionary<Token, Vector3> homePositions =
             new Dictionary<Token, Vector3>(16);
         private readonly List<string> moveHistory = new List<string>(MaxMoveHistoryEntries);
@@ -853,6 +857,14 @@ namespace ElementalLudo.Gameplay
 
             bool barrierBreakForced = CalculateLegalActions();
 
+            // Charged only on a 6, the one roll the exemption can change
+            // anything on. Arming it and then rolling a 3 leaves it armed for
+            // the next turn rather than quietly wasting it.
+            if (rolledValue == 6 && IsActiveSeatHuman)
+            {
+                ConsumeBarrierExemptionIfUsed();
+            }
+
             if (legalActions.Count == 0)
             {
                 phase = LudoTurnPhase.Resolving;
@@ -889,6 +901,77 @@ namespace ElementalLudo.Gameplay
             }
 
             NotifyActionTurn();
+        }
+
+        /// <summary>
+        /// Spends Barrera firme, but only if the player actually had a barrier
+        /// for it to protect. Rolling a 6 with nothing paired would otherwise
+        /// burn the charge on a turn where the rule was never going to bite.
+        /// </summary>
+        private void ConsumeBarrierExemptionIfUsed()
+        {
+            if (!upgrades.IsArmed(LudoUpgradeKind.BarrierExemption))
+            {
+                return;
+            }
+
+            // Asked without the exemption: if the rule would have narrowed the
+            // options, it was worth spending.
+            LudoRulesEngine.CalculateLegalActions(
+                boardState,
+                ActivePlayer,
+                players,
+                rolledValue,
+                new LudoRulesContext(elementalModeEnabled, settings.Permadeath),
+                scratchActions,
+                out bool wouldHaveBeenForced);
+
+            if (wouldHaveBeenForced)
+            {
+                upgrades.TryConsume(LudoUpgradeKind.BarrierExemption);
+                LogMove(
+                    $"{SpanishColorName(ActivePlayer.PlayerId)} usa Barrera firme: " +
+                    "el 6 no obliga a romperla.");
+            }
+        }
+
+        /// <summary>
+        /// Throws the movement die again and keeps the second result. Spends a
+        /// Movement Rethrow charge; returns whether it was allowed.
+        /// </summary>
+        public bool RequestMovementRethrow()
+        {
+            if (!initialized ||
+                phase != LudoTurnPhase.AwaitingAction ||
+                !IsActiveSeatHuman ||
+                actionPerformed ||
+                !upgrades.IsArmed(LudoUpgradeKind.MovementRethrow) ||
+                !upgrades.TryConsume(LudoUpgradeKind.MovementRethrow))
+            {
+                return false;
+            }
+
+            LogMove(
+                $"{SpanishColorName(ActivePlayer.PlayerId)} repite la tirada " +
+                $"(sacó {rolledValue}).");
+
+            // The roll being replaced already moved the three-sixes counter, so
+            // it is wound back first — otherwise rethrowing a 6 into another 6
+            // would count as three in a row after only two.
+            if (rolledValue == 6)
+            {
+                consecutiveSixes = Mathf.Max(0, consecutiveSixes - 1);
+            }
+
+            // Goes through the die rather than calling the handler directly, so
+            // the physical die actually tumbles to the new face and the result
+            // arrives by the same path every other roll takes. Restoring the
+            // phase first is what lets HandleDiceRolled accept it.
+            phase = LudoTurnPhase.AwaitingRoll;
+            SetTokenInteractionStates(false);
+            dice.SetRollEnabled(true);
+            dice.Roll();
+            return true;
         }
 
         private void HighlightReachableCells()
@@ -939,10 +1022,21 @@ namespace ElementalLudo.Gameplay
         /// The rule flags in force. Elemental mode is read from the runtime
         /// field rather than the settings, so the debug toggle still works
         /// mid-match; permadeath comes from the mode and can't be flipped.
+        ///
+        /// The barrier exemption is only offered to the seat the player is
+        /// actually sitting in — an armed upgrade must never quietly loosen the
+        /// rules for an AI that happens to roll a 6.
         /// </summary>
         private LudoRulesContext BuildRulesContext()
         {
-            return new LudoRulesContext(elementalModeEnabled, settings.Permadeath);
+            bool exempt =
+                IsActiveSeatHuman &&
+                upgrades.IsArmed(LudoUpgradeKind.BarrierExemption);
+
+            return new LudoRulesContext(
+                elementalModeEnabled,
+                settings.Permadeath,
+                exempt);
         }
 
         /// <summary>Tints the die with whoever is about to roll it.</summary>

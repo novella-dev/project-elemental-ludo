@@ -93,6 +93,7 @@ namespace ElementalLudo.Gameplay
             }
 
             barrierBreakForced = rolledValue == 6 &&
+                !context.BarrierBreakExempt &&
                 RestrictToBarrierBreaksIfAny(boardState, activePlayer, results);
         }
 
