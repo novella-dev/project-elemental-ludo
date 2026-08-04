@@ -28,6 +28,7 @@ namespace ElementalLudo.Gameplay
         [SerializeField] private LudoReachableCellsHighlighter reachableCellsHighlighter;
         [SerializeField] private LudoTokenGroundMarkers tokenGroundMarkers;
         [SerializeField] private LudoBoardPresenter boardPresenter;
+        [SerializeField] private LudoCombatArena combatArena;
 
         [Header("Mode")]
         [Tooltip("Offered as the default when the start menu opens. The menu is what actually decides the match.")]
@@ -41,6 +42,17 @@ namespace ElementalLudo.Gameplay
         [Header("Movement")]
         [Min(0f)]
         [SerializeField] private float movementStepDuration = 0.11f;
+
+        [Header("Adventure Combat")]
+        [Min(0f)]
+        [Tooltip("How long the final result stays on screen. AI-versus-AI duels never show and ignore all of these.")]
+        [SerializeField] private float combatDisplayDuration = 2.2f;
+        [Min(0f)]
+        [Tooltip("Pause before each side starts its turn, so the throw reads as an event.")]
+        [SerializeField] private float combatThrowDelay = 0.6f;
+        [Min(0f)]
+        [Tooltip("Pause between each AI reroll, so the player can follow what it kept.")]
+        [SerializeField] private float combatRerollDelay = 0.45f;
 
         private const int MaxMoveHistoryEntries = 30;
         private const float SharedCellOffsetMagnitude = 0.55f;
@@ -76,6 +88,15 @@ namespace ElementalLudo.Gameplay
         /// <summary>Seat the human holds, or -1 in hot-seat where they all are.</summary>
         private int humanSeatIndex = -1;
         private bool humanDefeated;
+
+        // Results of the capture step, which is a coroutine now that a duel
+        // can pause it, so it can't just return them.
+        private bool captureAwardedBonus;
+        private bool captureRepelledAttacker;
+        private bool combatVisible;
+        private LudoCombatReport combatReport;
+        private LudoCombatSession combatSession;
+        private bool combatTurnConfirmed;
         private int activePlayerIndex;
         private int rolledValue;
         private int pendingBonusDistance;
@@ -109,6 +130,14 @@ namespace ElementalLudo.Gameplay
 
         /// <summary>Hardcore only: the player ran out of tokens.</summary>
         public bool HumanDefeated => humanDefeated;
+
+        /// <summary>True while a duel the player is involved in is on screen.</summary>
+        public bool IsCombatVisible => combatVisible;
+        public LudoCombatReport CombatReport => combatReport;
+
+        /// <summary>The duel in progress, or null once it has resolved.</summary>
+        public LudoCombatSession CombatSession => combatSession;
+
         public bool IsInitialized => initialized;
         public bool IsDiceRolling => dice != null && dice.IsRolling;
         public LudoGameMode DefaultMode => defaultMode;
@@ -171,6 +200,29 @@ namespace ElementalLudo.Gameplay
             };
             presenterObject.transform.SetParent(transform, false);
             boardPresenter = presenterObject.AddComponent<LudoBoardPresenter>();
+        }
+
+        private void EnsureCombatArena()
+        {
+            if (combatArena == null)
+            {
+                combatArena = FindFirstObjectByType<LudoCombatArena>();
+            }
+
+            if (combatArena == null)
+            {
+                GameObject arenaObject = new GameObject("CombatArena")
+                {
+                    hideFlags = HideFlags.DontSave
+                };
+                arenaObject.transform.SetParent(transform, false);
+                combatArena = arenaObject.AddComponent<LudoCombatArena>();
+            }
+
+            // Re-pointed on every duel rather than only on creation: the arena
+            // outlives a match, and a delegate lost to a domain reload would
+            // leave the dice looking clickable but inert.
+            combatArena.RerollRequested = index => RequestCombatReroll(index);
         }
 
         private void EnsureTokenGroundMarkers()
@@ -290,6 +342,7 @@ namespace ElementalLudo.Gameplay
             StopAllCoroutines();
             dice.CancelRoll();
             CancelPendingDecisions();
+            AbortCombat();
 
             awaitingSetup = true;
             phase = LudoTurnPhase.AwaitingRoll;
@@ -579,6 +632,7 @@ namespace ElementalLudo.Gameplay
             // the freshly restarted game.
             dice.CancelRoll();
             CancelPendingDecisions();
+            AbortCombat();
 
             foreach (LudoPlayerState player in players)
             {
@@ -760,7 +814,7 @@ namespace ElementalLudo.Gameplay
                 consecutiveSixes = 0;
             }
 
-            CalculateLegalActions();
+            bool barrierBreakForced = CalculateLegalActions();
 
             if (legalActions.Count == 0)
             {
@@ -773,9 +827,18 @@ namespace ElementalLudo.Gameplay
 
             phase = LudoTurnPhase.AwaitingAction;
             SetTokenInteractionStates(true);
-            statusMessage = legalActions.Count == 1
-                ? "One valid action."
-                : $"Choose one of {legalActions.Count} valid actions.";
+
+            if (barrierBreakForced)
+            {
+                statusMessage = "¡6! Debes romper tu barrera.";
+                LogMove($"Turno de {SpanishColorName(ActivePlayer.PlayerId)}: el 6 obliga a romper la barrera.");
+            }
+            else
+            {
+                statusMessage = legalActions.Count == 1
+                    ? "One valid action."
+                    : $"Choose one of {legalActions.Count} valid actions.";
+            }
 
             HighlightReachableCells();
 
@@ -862,7 +925,8 @@ namespace ElementalLudo.Gameplay
             }
         }
 
-        private void CalculateLegalActions()
+        /// <summary>Returns whether rolling a 6 just forced a barrier break (never true for a bonus move).</summary>
+        private bool CalculateLegalActions()
         {
             LudoPlayerState player = players[activePlayerIndex];
             if (pendingBonusDistance > 0)
@@ -874,7 +938,7 @@ namespace ElementalLudo.Gameplay
                     pendingBonusDistance,
                     BuildRulesContext(),
                     legalActions);
-                return;
+                return false;
             }
 
             LudoRulesEngine.CalculateLegalActions(
@@ -883,7 +947,9 @@ namespace ElementalLudo.Gameplay
                 players,
                 rolledValue,
                 BuildRulesContext(),
-                legalActions);
+                legalActions,
+                out bool barrierBreakForced);
+            return barrierBreakForced;
         }
 
         public int GetActionMoveDistance(LudoLegalAction action)
@@ -947,6 +1013,13 @@ namespace ElementalLudo.Gameplay
             bool reachedGoal = false;
             lastMovedToken = token;
 
+            // Where to put the token back if it loses a duel. Captured before
+            // anything moves, since the walk overwrites it.
+            bool cameFromHome = action.Type == LudoActionType.LeaveHome;
+            int originRouteIndex = cameFromHome
+                ? 0
+                : boardState.GetRouteIndex(token);
+
             if (!wasBonusMove)
             {
                 extraRollAfterRewards =
@@ -960,13 +1033,18 @@ namespace ElementalLudo.Gameplay
                     token,
                     GetRoutePosition(player, token, 0));
                 boardState.SetTrack(token, 0);
-                earnedCaptureBonus = CaptureOpponentTokensOnCell(player, token);
+                yield return ResolveLanding(player, token, true, originRouteIndex);
+                earnedCaptureBonus = captureAwardedBonus;
                 RepositionTrackTokens();
-                statusMessage = $"{token.name} entered the starting square.";
-                LogMove(
-                    $"Token {SpanishColorName(token.OwnerStyle.PlayerId)} {token.TokenId} " +
-                    $"sale de casa a {DescribeCell(player, 0)}.");
-                LogBarrierIfFormed(player, token, 0);
+
+                if (!captureRepelledAttacker)
+                {
+                    statusMessage = $"{token.name} entered the starting square.";
+                    LogMove(
+                        $"Token {SpanishColorName(token.OwnerStyle.PlayerId)} {token.TokenId} " +
+                        $"sale de casa a {DescribeCell(player, 0)}.");
+                    LogBarrierIfFormed(player, token, 0);
+                }
             }
             else
             {
@@ -981,10 +1059,16 @@ namespace ElementalLudo.Gameplay
                     boardState.SetTrack(token, routeIndex);
                 }
 
-                earnedCaptureBonus = CaptureOpponentTokensOnCell(player, token);
+                yield return ResolveLanding(player, token, false, originRouteIndex);
+                earnedCaptureBonus = captureAwardedBonus;
                 RepositionTrackTokens();
 
-                if (action.DestinationRouteIndex == player.Route.Length - 1)
+                if (captureRepelledAttacker)
+                {
+                    // Pushed back, so it neither reached the goal nor formed
+                    // anything worth reporting where it briefly stood.
+                }
+                else if (action.DestinationRouteIndex == player.Route.Length - 1)
                 {
                     boardState.SetFinished(token, action.DestinationRouteIndex);
                     reachedGoal = true;
@@ -1321,10 +1405,21 @@ namespace ElementalLudo.Gameplay
             return new Vector2Int(int.MinValue, int.MinValue);
         }
 
-        private bool CaptureOpponentTokensOnCell(
+        /// <summary>
+        /// Resolves whatever the moving token landed on. A coroutine because
+        /// Adventure turns a capture into a duel that has to be watched;
+        /// results come back through captureAwardedBonus and
+        /// captureRepelledAttacker rather than a return value.
+        /// </summary>
+        private IEnumerator ResolveLanding(
             LudoPlayerState movingPlayer,
-            Token movingToken)
+            Token movingToken,
+            bool cameFromHome,
+            int originRouteIndex)
         {
+            captureAwardedBonus = false;
+            captureRepelledAttacker = false;
+
             List<Token> captured = LudoRulesEngine.GetCapturedTokens(
                 boardState,
                 movingPlayer,
@@ -1332,6 +1427,225 @@ namespace ElementalLudo.Gameplay
                 movingToken,
                 BuildRulesContext());
 
+            if (captured.Count == 0)
+            {
+                yield break;
+            }
+
+            if (settings.Mode == LudoGameMode.Adventure)
+            {
+                Token defenderToken = captured[0];
+                LudoCombatOutcome outcome;
+
+                if (IsHumanInvolvedInCapture(captured))
+                {
+                    yield return PlayDuel(movingToken, defenderToken);
+                    outcome = combatReport.Outcome;
+                }
+                else
+                {
+                    // Nobody is watching, so the whole duel collapses into one
+                    // call — the same code both sides would have played by
+                    // hand, just without the waiting.
+                    outcome = LudoCombatResolver.Resolve(
+                        movingToken,
+                        defenderToken,
+                        settings.ElementalRules);
+                    combatReport = new LudoCombatReport(
+                        movingToken,
+                        defenderToken,
+                        outcome);
+                }
+
+                LogCombat(movingToken, defenderToken, outcome);
+
+                if (!outcome.AttackerWins)
+                {
+                    yield return RepelAttacker(
+                        movingPlayer,
+                        movingToken,
+                        cameFromHome,
+                        originRouteIndex);
+                    captureRepelledAttacker = true;
+                    yield break;
+                }
+            }
+
+            captureAwardedBonus = ApplyCaptures(movingPlayer, movingToken, captured);
+        }
+
+        /// <summary>
+        /// Plays a duel the player is part of, one side at a time: the
+        /// attacker finishes its hand, then the defender plays knowing the
+        /// score to beat. Human sides wait for input; AI sides spend their
+        /// rerolls on a timer so the player can follow what happened.
+        /// </summary>
+        private IEnumerator PlayDuel(Token attackerToken, Token defenderToken)
+        {
+            PlayerStyle humanStyle = humanSeatIndex >= 0 && humanSeatIndex < players.Count
+                ? players[humanSeatIndex].Style
+                : null;
+
+            combatSession = new LudoCombatSession(
+                attackerToken,
+                defenderToken,
+                attackerToken.OwnerStyle == humanStyle,
+                defenderToken.OwnerStyle == humanStyle,
+                settings.ElementalRules);
+
+            combatVisible = true;
+            statusMessage = "¡Duelo de dados!";
+            EnsureCombatArena();
+            combatArena.Show(combatSession);
+
+            while (combatSession.Phase != LudoCombatPhase.Resolved)
+            {
+                yield return new WaitForSecondsRealtime(combatThrowDelay);
+
+                if (combatSession.IsHumanTurn)
+                {
+                    combatTurnConfirmed = false;
+                    // Held here until the player runs out of rerolls or says
+                    // they're done; the UI flips the flag.
+                    yield return new WaitUntil(() => combatTurnConfirmed);
+                }
+                else
+                {
+                    LudoCombatHand hand = combatSession.CurrentHand;
+                    while (hand != null && hand.CanReroll)
+                    {
+                        int index = LudoCombatResolver.SuggestReroll(hand.Dice);
+                        if (index < 0 || !hand.TryReroll(index))
+                        {
+                            break;
+                        }
+
+                        yield return new WaitForSecondsRealtime(combatRerollDelay);
+                    }
+                }
+
+                combatSession.EndCurrentTurn();
+            }
+
+            combatReport = combatSession.BuildReport();
+            yield return new WaitForSecondsRealtime(combatDisplayDuration);
+
+            combatArena.Hide();
+            combatVisible = false;
+            combatSession = null;
+        }
+
+        /// <summary>
+        /// Tears the duel down without finishing it. StopAllCoroutines kills
+        /// PlayDuel wherever it stands, so restarting or quitting mid-duel
+        /// would otherwise leave the arena camera live and the board's parked.
+        /// </summary>
+        private void AbortCombat()
+        {
+            if (combatArena != null)
+            {
+                combatArena.Hide();
+            }
+
+            combatSession = null;
+            combatVisible = false;
+            combatTurnConfirmed = false;
+        }
+
+        /// <summary>Called by the UI to spend one of the player's rerolls.</summary>
+        public bool RequestCombatReroll(int dieIndex)
+        {
+            return combatSession != null &&
+                   combatSession.IsHumanTurn &&
+                   combatSession.TryReroll(dieIndex);
+        }
+
+        /// <summary>Called by the UI when the player is done with their hand.</summary>
+        public void ConfirmCombatHand()
+        {
+            if (combatSession != null && combatSession.IsHumanTurn)
+            {
+                combatTurnConfirmed = true;
+            }
+        }
+
+        /// <summary>The attacker survives but is pushed back where it came from.</summary>
+        private IEnumerator RepelAttacker(
+            LudoPlayerState movingPlayer,
+            Token movingToken,
+            bool cameFromHome,
+            int originRouteIndex)
+        {
+            string attacker =
+                $"Token {SpanishColorName(movingToken.OwnerStyle.PlayerId)} {movingToken.TokenId}";
+
+            if (cameFromHome)
+            {
+                boardState.SetHome(movingToken);
+                movingToken.transform.position = homePositions[movingToken];
+                statusMessage = $"{movingToken.name} was repelled back home.";
+                LogMove($"{attacker} pierde el duelo y vuelve a casa.");
+            }
+            else
+            {
+                boardState.SetTrack(movingToken, originRouteIndex);
+                yield return MoveTokenTo(
+                    movingToken,
+                    GetRoutePosition(movingPlayer, movingToken, originRouteIndex));
+                statusMessage = $"{movingToken.name} was repelled.";
+                LogMove(
+                    $"{attacker} pierde el duelo y retrocede a " +
+                    $"{DescribeCell(movingPlayer, originRouteIndex)}.");
+            }
+
+            movingToken.SetInteractionState(TokenInteractionState.Normal);
+        }
+
+        private bool IsHumanInvolvedInCapture(List<Token> captured)
+        {
+            if (humanSeatIndex < 0 || humanSeatIndex >= players.Count)
+            {
+                return false;
+            }
+
+            if (activePlayerIndex == humanSeatIndex)
+            {
+                return true;
+            }
+
+            PlayerStyle humanStyle = players[humanSeatIndex].Style;
+            foreach (Token token in captured)
+            {
+                if (token.OwnerStyle == humanStyle)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void LogCombat(
+            Token attackerToken,
+            Token defenderToken,
+            LudoCombatOutcome outcome)
+        {
+            string attacker =
+                $"{SpanishColorName(attackerToken.OwnerStyle.PlayerId)} {attackerToken.TokenId}";
+            string defender =
+                $"{SpanishColorName(defenderToken.OwnerStyle.PlayerId)} {defenderToken.TokenId}";
+            string winner = outcome.AttackerWins ? attacker : defender;
+
+            LogMove(
+                $"Duelo: {attacker} [{LudoCombatInfo.Describe(outcome.Attacker)}] vs " +
+                $"{defender} [{LudoCombatInfo.Describe(outcome.Defender)}] → gana {winner}.");
+        }
+
+        private bool ApplyCaptures(
+            LudoPlayerState movingPlayer,
+            Token movingToken,
+            List<Token> captured)
+        {
             bool awardsCaptureBonus = captured.Count > 0 &&
                 !LudoBoardRoutes.IsSafeCell(
                     movingPlayer.Route[boardState.GetRouteIndex(movingToken)]);

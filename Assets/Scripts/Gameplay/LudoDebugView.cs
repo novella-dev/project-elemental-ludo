@@ -55,6 +55,7 @@ namespace ElementalLudo.Gameplay
         private GUIStyle accentBarStyle;
         private GUIStyle actionCardStyle;
         private GUIStyle primaryButtonStyle;
+        private GUIStyle endMatchButtonStyle;
         private GUIStyle toggleOnStyle;
         private GUIStyle toggleOffStyle;
         private GUIStyle winnerStyle;
@@ -71,7 +72,7 @@ namespace ElementalLudo.Gameplay
                 controller = FindFirstObjectByType<LudoGameController>();
             }
 
-            ResolveBackgroundCamera();
+            RefreshBackgroundCamera();
             if (backgroundCamera != null)
             {
                 lightBackgroundActive =
@@ -98,6 +99,7 @@ namespace ElementalLudo.Gameplay
             }
 
             EnsureStyles();
+            RefreshBackgroundCamera();
             DrawBackgroundToggle();
 
             if (controller == null || !controller.IsInitialized)
@@ -108,6 +110,15 @@ namespace ElementalLudo.Gameplay
             if (controller.AwaitingSetup)
             {
                 DrawStartMenu();
+                return;
+            }
+
+            // A duel owns the screen: the board panels are about a board the
+            // camera isn't even looking at, so they'd just be clutter on top
+            // of the arena.
+            if (controller.IsCombatVisible)
+            {
+                DrawCombatPanel();
                 return;
             }
 
@@ -125,6 +136,8 @@ namespace ElementalLudo.Gameplay
             DrawPhaseContent(playerColor);
 
             GUILayout.EndArea();
+
+            DrawEndMatchButton();
 
             if (controller.ElementalModeEnabled)
             {
@@ -158,7 +171,7 @@ namespace ElementalLudo.Gameplay
 
         private void ApplyBackgroundColor()
         {
-            ResolveBackgroundCamera();
+            RefreshBackgroundCamera();
             if (backgroundCamera != null)
             {
                 backgroundCamera.backgroundColor = lightBackgroundActive
@@ -167,17 +180,44 @@ namespace ElementalLudo.Gameplay
             }
         }
 
-        private void ResolveBackgroundCamera()
+        private void RefreshBackgroundCamera()
         {
-            if (backgroundCamera != null)
+            Camera activeCamera = null;
+            foreach (Camera candidate in Camera.allCameras)
+            {
+                if (candidate == null ||
+                    !candidate.isActiveAndEnabled ||
+                    !candidate.gameObject.activeInHierarchy)
+                {
+                    continue;
+                }
+
+                if (activeCamera == null || candidate.depth > activeCamera.depth)
+                {
+                    activeCamera = candidate;
+                }
+            }
+
+            if (activeCamera == null)
+            {
+                activeCamera = Camera.main;
+            }
+
+            if (activeCamera == null)
+            {
+                activeCamera = FindFirstObjectByType<Camera>();
+            }
+
+            if (backgroundCamera == activeCamera)
             {
                 return;
             }
 
-            backgroundCamera = Camera.main;
-            if (backgroundCamera == null)
+            backgroundCamera = activeCamera;
+            if (backgroundCamera != null)
             {
-                backgroundCamera = FindFirstObjectByType<Camera>();
+                lightBackgroundActive =
+                    backgroundCamera.backgroundColor.grayscale >= 0.5f;
             }
         }
 
@@ -231,6 +271,211 @@ namespace ElementalLudo.Gameplay
             {
                 controller.ElementalModeEnabled = !controller.ElementalModeEnabled;
             }
+        }
+
+        /// <summary>
+        /// Quits back to the start menu from mid-match, not just from the
+        /// game-over screen — mainly so switching modes to test doesn't need
+        /// a full close-and-reopen of the Editor each time.
+        /// </summary>
+        private void DrawEndMatchButton()
+        {
+            const float width = 220f;
+            const float height = 44f;
+
+            GUILayout.BeginArea(
+                new Rect(
+                    (Screen.width - width) * 0.5f,
+                    Screen.height - height - PanelMargin,
+                    width,
+                    height));
+
+            if (GUILayout.Button(
+                    "Finalizar Partida",
+                    endMatchButtonStyle,
+                    GUILayout.Height(height)))
+            {
+                controller.ReturnToMenu();
+            }
+
+            GUILayout.EndArea();
+        }
+
+        /// <summary>
+        /// The dice duel, centred over the board. Only ever drawn for duels
+        /// the player is part of; AI-versus-AI ones resolve without any of
+        /// this and never set IsCombatVisible.
+        /// </summary>
+        private void DrawCombatPanel()
+        {
+            const float width = 700f;
+            const float height = 232f;
+
+            LudoCombatSession session = controller.CombatSession;
+            LudoCombatReport report = controller.CombatReport;
+            Token attackerToken = session?.AttackerToken ?? report.Attacker;
+            Token defenderToken = session?.DefenderToken ?? report.Defender;
+            if (attackerToken == null || defenderToken == null)
+            {
+                return;
+            }
+
+            // Right aligned so the near combatant and its coloured pedestal
+            // stay visible instead of disappearing behind the controls.
+            GUILayout.BeginArea(
+                new Rect(
+                    Screen.width - width - PanelMargin,
+                    Screen.height - height - PanelMargin,
+                    width,
+                    height),
+                panelStyle);
+
+            // Resolved but not yet cleared counts as over: the session lingers
+            // through the result display, so testing for null alone would keep
+            // showing the in-progress view the whole time.
+            if (session == null || session.Phase == LudoCombatPhase.Resolved)
+            {
+                DrawCombatScoreLine(attackerToken, report.Outcome.Attacker, "ATACANTE", false);
+                DrawCombatScoreLine(defenderToken, report.Outcome.Defender, "DEFENSOR", false);
+                DrawCombatElementLine(
+                    session != null && session.ElementalRules,
+                    report.Outcome.Attacker,
+                    report.Outcome.Defender,
+                    attackerToken,
+                    defenderToken);
+                GUILayout.Space(8f);
+                DrawCombatVerdict(report);
+                GUILayout.EndArea();
+                return;
+            }
+
+            bool attackerActive = session.Phase == LudoCombatPhase.AttackerTurn;
+            LudoCombatRoll attackerRoll = session.Attacker.Evaluate();
+            LudoCombatRoll defenderRoll = session.Defender.Evaluate();
+            DrawCombatScoreLine(attackerToken, attackerRoll, "ATACANTE", attackerActive);
+
+            if (attackerActive)
+            {
+                GUILayout.Label("DEFENSOR  ·  esperando su turno", hintStyle);
+            }
+            else
+            {
+                DrawCombatScoreLine(defenderToken, defenderRoll, "DEFENSOR", true);
+                GUILayout.Label(
+                    $"Necesita superar {session.ScoreToBeat} para resistir.",
+                    hintStyle);
+            }
+
+            DrawCombatElementLine(
+                session.ElementalRules,
+                attackerRoll,
+                defenderRoll,
+                attackerToken,
+                defenderToken);
+
+            GUILayout.Space(6f);
+            DrawCombatControls(session);
+            GUILayout.EndArea();
+        }
+
+        /// <summary>
+        /// Spells the elemental edge out inside the duel: which side it favours
+        /// and the circle it comes from. Drawn whenever the elemental layer is
+        /// on, so a neutral matchup still explains why nobody got the five
+        /// points rather than leaving a blank where an explanation was.
+        /// </summary>
+        private void DrawCombatElementLine(
+            bool elementalRules,
+            LudoCombatRoll attackerRoll,
+            LudoCombatRoll defenderRoll,
+            Token attackerToken,
+            Token defenderToken)
+        {
+            bool anyBonus =
+                attackerRoll.ElementBonus > 0 || defenderRoll.ElementBonus > 0;
+            if (!elementalRules && !anyBonus)
+            {
+                return;
+            }
+
+            string advantage = LudoCombatInfo.AdvantageLine(
+                attackerRoll,
+                defenderRoll,
+                attackerToken,
+                defenderToken);
+
+            GUILayout.Space(4f);
+            GUILayout.Label(
+                advantage ?? "Sin ventaja elemental en este duelo.",
+                advantage != null ? sectionLabelStyle : hintStyle);
+            GUILayout.Label(LudoCombatInfo.AdvantageRule, hintStyle);
+        }
+
+        /// <summary>One side's running total, marked when it's their turn.</summary>
+        private void DrawCombatScoreLine(
+            Token token,
+            LudoCombatRoll roll,
+            string role,
+            bool isActive)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Box(
+                string.Empty,
+                MakeAccentStyle(token.OwnerStyle.TokenColor),
+                GUILayout.Width(5f),
+                GUILayout.Height(22f));
+            GUILayout.Space(8f);
+            GUILayout.Label(
+                $"{role}  {LudoGameController.SpanishColorName(token.OwnerStyle.PlayerId)} " +
+                $"{token.TokenId}" + (isActive ? "  ←" : string.Empty),
+                sectionLabelStyle,
+                GUILayout.Width(190f));
+            GUILayout.Label(LudoCombatInfo.Describe(roll), ruleTitleStyle);
+            GUILayout.EndHorizontal();
+        }
+
+        /// <summary>
+        /// Reroll controls for the human. Rerolling is done by clicking the die
+        /// itself out in the arena, which is why there are no numbered buttons
+        /// here any more — the dice are already on screen in front of the
+        /// player, and pointing at the one you mean beats matching it to a
+        /// list. All that is left is the running total and a way to stop.
+        /// </summary>
+        private void DrawCombatControls(LudoCombatSession session)
+        {
+            if (!session.IsHumanTurn)
+            {
+                GUILayout.Label("El rival está decidiendo sus relanzamientos...", statusStyle);
+                return;
+            }
+
+            LudoCombatHand hand = session.CurrentHand;
+            GUILayout.Label(
+                hand.CanReroll
+                    ? $"Tu turno — haz clic en un dado para relanzarlo " +
+                      $"({hand.RerollsLeft} restantes)"
+                    : "Tu turno — sin relanzamientos",
+                statusStyle);
+
+            if (GUILayout.Button("Plantarse", primaryButtonStyle, GUILayout.Width(140f)))
+            {
+                controller.ConfirmCombatHand();
+            }
+        }
+
+
+        /// <summary>
+        /// Called from the player's point of view, which isn't the same as the
+        /// attacker's: losing a duel you defended is a win for you.
+        /// </summary>
+        private void DrawCombatVerdict(LudoCombatReport report)
+        {
+            GUILayout.Label(report.HumanWon ? "VICTORIA" : "DERROTA", winnerStyle);
+            GUILayout.Label(
+                report.Outcome.AttackerWins
+                    ? "La captura se consuma."
+                    : "El atacante es rechazado.",
+                hintStyle);
         }
 
         private void DrawElementalRulesPanel()
@@ -773,6 +1018,24 @@ namespace ElementalLudo.Gameplay
                 }
             };
 
+            endMatchButtonStyle = new GUIStyle(GUI.skin.button)
+            {
+                fontSize = 13,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                padding = new RectOffset(16, 16, 10, 10),
+                normal =
+                {
+                    background = GetSolidTexture(new Color(0.72f, 0.2f, 0.2f, 0.9f)),
+                    textColor = Color.white
+                },
+                hover =
+                {
+                    background = GetSolidTexture(new Color(0.82f, 0.26f, 0.26f, 0.9f)),
+                    textColor = Color.white
+                }
+            };
+
             toggleOnStyle = new GUIStyle(GUI.skin.button)
             {
                 fontSize = 11,
@@ -826,6 +1089,12 @@ namespace ElementalLudo.Gameplay
                 alignment = TextAnchor.MiddleCenter,
                 fontSize = 12
             };
+            backgroundButtonStyle.normal.background = GetSolidTexture(
+                new Color(0.03f, 0.04f, 0.05f, 0.82f));
+            backgroundButtonStyle.normal.textColor = Color.white;
+            backgroundButtonStyle.hover.background = GetSolidTexture(
+                new Color(0.08f, 0.10f, 0.12f, 0.94f));
+            backgroundButtonStyle.hover.textColor = Color.white;
 
             stylesReady = true;
         }
