@@ -320,12 +320,11 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
-            // A strip along the bottom, not a centred box: the dice and the
-            // combatants are the point now that they exist in 3D, and a panel
-            // in the middle would sit right on top of them.
+            // Right aligned so the near combatant and its coloured pedestal
+            // stay visible instead of disappearing behind the controls.
             GUILayout.BeginArea(
                 new Rect(
-                    (Screen.width - width) * 0.5f,
+                    Screen.width - width - PanelMargin,
                     Screen.height - height - PanelMargin,
                     width,
                     height),
@@ -1090,6 +1089,12 @@ namespace ElementalLudo.Gameplay
                 alignment = TextAnchor.MiddleCenter,
                 fontSize = 12
             };
+            backgroundButtonStyle.normal.background = GetSolidTexture(
+                new Color(0.03f, 0.04f, 0.05f, 0.82f));
+            backgroundButtonStyle.normal.textColor = Color.white;
+            backgroundButtonStyle.hover.background = GetSolidTexture(
+                new Color(0.08f, 0.10f, 0.12f, 0.94f));
+            backgroundButtonStyle.hover.textColor = Color.white;
 
             stylesReady = true;
         }
