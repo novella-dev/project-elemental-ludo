@@ -152,12 +152,13 @@ namespace ElementalLudo.Board
         private int hoveredDie = -1;
 
         /// <summary>
-        /// Raised with the index of a die the player clicked to reroll. The
-        /// arena spots the click because it owns the camera the player is
-        /// looking through, but it never touches the hand itself — the
-        /// controller decides whether the reroll is legal.
+        /// Raised with the index of a die the player clicked to reroll,
+        /// returning whether it was actually spent. The arena spots the click
+        /// because it owns the camera the player is looking through, but it
+        /// never touches the hand itself — the controller decides whether the
+        /// reroll is legal, and the answer is what the arena animates off.
         /// </summary>
-        public System.Action<int> RerollRequested;
+        public System.Func<int, bool> RerollRequested;
 
         /// <summary>Where the arena sits, well away from the board.</summary>
         private Vector3 Origin => new Vector3(ArenaDistance, 0f, 0f);
@@ -261,12 +262,24 @@ namespace ElementalLudo.Board
             SetHover(side, hit);
 
             Mouse mouse = Mouse.current;
-            if (hit >= 0 &&
-                mouse != null &&
-                mouse.leftButton.wasPressedThisFrame)
+            if (hit < 0 ||
+                mouse == null ||
+                !mouse.leftButton.wasPressedThisFrame ||
+                RerollRequested == null)
             {
-                RerollRequested?.Invoke(hit);
+                return;
             }
+
+            if (!RerollRequested(hit))
+            {
+                return;
+            }
+
+            // Animated off the reroll having happened, not off the face
+            // changing. One throw in six comes up the same number it already
+            // showed, and inferring the spin from the value left those looking
+            // exactly like a click that charged a reroll and did nothing.
+            StartTumble(side[hit], session.CurrentHand.Dice[hit]);
         }
 
         /// <summary>The dice the player may click right now, or null.</summary>
@@ -1534,25 +1547,35 @@ namespace ElementalLudo.Board
                     continue;
                 }
 
-                die.Value = values[index];
                 if (immediate)
                 {
+                    die.Value = values[index];
                     die.Timer = 0f;
                     die.Visual.ShowValue(die.Value);
                     continue;
                 }
 
-                // A face that no longer matches means somebody rerolled it.
-                die.Timer = tumbleDuration;
-                die.StartRotation = die.Visual.transform.localRotation;
-                die.Axis = Random.onUnitSphere;
-                if (die.Axis.sqrMagnitude <= Mathf.Epsilon)
-                {
-                    die.Axis = Vector3.up;
-                }
-
-                die.Axis.Normalize();
+                // A face that no longer matches means the AI rerolled it. The
+                // player's own rerolls are animated at the click instead, since
+                // a change in value can't detect one that landed on the same
+                // face it started from.
+                StartTumble(die, values[index]);
             }
+        }
+
+        /// <summary>Sends a die tumbling and lands it on <paramref name="value"/>.</summary>
+        private void StartTumble(ArenaDie die, int value)
+        {
+            die.Value = value;
+            die.Timer = tumbleDuration;
+            die.StartRotation = die.Visual.transform.localRotation;
+            die.Axis = Random.onUnitSphere;
+            if (die.Axis.sqrMagnitude <= Mathf.Epsilon)
+            {
+                die.Axis = Vector3.up;
+            }
+
+            die.Axis.Normalize();
         }
 
         private void AdvanceTumbles()

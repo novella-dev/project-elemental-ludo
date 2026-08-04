@@ -618,9 +618,20 @@ namespace ElementalLudo.Gameplay
             }
 
             setupMode = controller.DefaultMode;
-            setupElementalRules = false;
+            setupElementalRules = DefaultElementalRulesFor(setupMode);
             setupSeatIndex = 0;
             setupDefaultsApplied = true;
+        }
+
+        /// <summary>
+        /// Adventure is the elemental mode — the duels, the +5 advantage and
+        /// the upgrades planned on top of them all assume the layer is on, so
+        /// starting it switched off hides the mode's whole point behind a
+        /// toggle. The others stay opt-in.
+        /// </summary>
+        private static bool DefaultElementalRulesFor(LudoGameMode mode)
+        {
+            return mode == LudoGameMode.Adventure;
         }
 
         private void DrawModeCard(LudoGameMode mode)
@@ -642,12 +653,13 @@ namespace ElementalLudo.Gameplay
             {
                 setupMode = mode;
 
-                // Classic is the mode that opts out of the elemental layer, so
-                // the toggle can't survive a switch into it.
-                if (!LudoMatchSettings.SupportsElementalRules(mode))
-                {
-                    setupElementalRules = false;
-                }
+                // Reset to the mode's own default rather than carrying the
+                // previous mode's answer across: Classic can't have the layer
+                // at all and Adventure is built around it, so a value that made
+                // sense for one is usually wrong for the next.
+                setupElementalRules =
+                    LudoMatchSettings.SupportsElementalRules(mode) &&
+                    DefaultElementalRulesFor(mode);
             }
 
             GUILayout.Label(LudoGameModeInfo.Summary(mode), hintStyle);
