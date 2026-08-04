@@ -916,10 +916,11 @@ namespace ElementalLudo.Gameplay
             }
 
             // Asked without the exemption: if the rule would have narrowed the
-            // options, it was worth spending.
+            // options, it was worth spending. Takes the seat state rather than
+            // ActivePlayer, which is only that seat's PlayerStyle.
             LudoRulesEngine.CalculateLegalActions(
                 boardState,
-                ActivePlayer,
+                players[activePlayerIndex],
                 players,
                 rolledValue,
                 new LudoRulesContext(elementalModeEnabled, settings.Permadeath),
