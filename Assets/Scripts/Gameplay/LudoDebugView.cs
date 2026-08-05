@@ -8,8 +8,12 @@ namespace ElementalLudo.Gameplay
     /// The former "Testing UI" OnGUI panel, pulled out of
     /// LudoGameController. Only reads the controller's public state and
     /// forwards button presses back into its public API — no rules or
-    /// turn logic live here. Meant to be replaced by real UGUI/UI Toolkit
-    /// later (Fase 5) without touching the controller.
+    /// turn logic live here.
+    ///
+    /// The start menu (Fase 5) is the first piece moved out to real uGUI —
+    /// see <see cref="LudoStartMenuView"/> — and is no longer drawn from
+    /// here. The rest (duel panel, run map legend, rewards, upgrades,
+    /// history) is still IMGUI, meant to move the same way later.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class LudoDebugView : MonoBehaviour
@@ -28,23 +32,10 @@ namespace ElementalLudo.Gameplay
         [SerializeField] private Color darkBackground = Color.black;
         [SerializeField] private Color lightBackground = Color.white;
 
-        private static readonly LudoGameMode[] SelectableModes =
-        {
-            LudoGameMode.Classic,
-            LudoGameMode.Adventure,
-            LudoGameMode.Hardcore,
-            LudoGameMode.Multiplayer
-        };
-
-        private LudoAIDifficulty setupDifficulty = LudoAIDifficulty.Normal;
-        private LudoGameMode setupMode;
-        private bool setupElementalRules;
-        private int setupSeatIndex;
-        private LudoElement setupRunElement = LudoElement.Fire;
-        private bool setupDefaultsApplied;
-
         private readonly Dictionary<Color, Texture2D> textureCache =
             new Dictionary<Color, Texture2D>();
+
+        private LudoStartMenuView startMenuView;
 
         private GUIStyle panelStyle;
         private GUIStyle titleStyle;
@@ -83,6 +74,34 @@ namespace ElementalLudo.Gameplay
                     backgroundCamera.backgroundColor.grayscale >= 0.5f;
                 ApplyBackgroundColor();
             }
+
+            EnsureStartMenuView();
+        }
+
+        /// <summary>
+        /// The start menu used to be drawn here in IMGUI, directly on top of
+        /// the live board. It is now its own uGUI screen with a procedural
+        /// backdrop, built the same way the run map and combat arena build
+        /// themselves — a lazily-created child rather than anything placed
+        /// by hand in the scene.
+        /// </summary>
+        private void EnsureStartMenuView()
+        {
+            if (startMenuView != null)
+            {
+                return;
+            }
+
+            startMenuView = FindFirstObjectByType<LudoStartMenuView>();
+            if (startMenuView == null)
+            {
+                GameObject menuObject = new GameObject("StartMenu")
+                {
+                    hideFlags = HideFlags.DontSave
+                };
+                menuObject.transform.SetParent(transform, false);
+                startMenuView = menuObject.AddComponent<LudoStartMenuView>();
+            }
         }
 
         private void OnDestroy()
@@ -103,17 +122,20 @@ namespace ElementalLudo.Gameplay
             }
 
             EnsureStyles();
+
+            if (controller != null && controller.IsInitialized && controller.AwaitingSetup)
+            {
+                // LudoStartMenuView owns the screen now: its own uGUI canvas
+                // and procedural backdrop, not this IMGUI panel drawing over
+                // a live board nobody has started playing on yet.
+                return;
+            }
+
             RefreshBackgroundCamera();
             DrawBackgroundToggle();
 
             if (controller == null || !controller.IsInitialized)
             {
-                return;
-            }
-
-            if (controller.AwaitingSetup)
-            {
-                DrawStartMenu();
                 return;
             }
 
@@ -914,365 +936,6 @@ namespace ElementalLudo.Gameplay
         {
             return $"{LudoElementInfo.DisplayName(player.Element)} " +
                    $"({LudoGameController.SpanishColorName(player.Style.PlayerId)})";
-        }
-
-        /// <summary>
-        /// Modal start menu: mode on the left, that mode's options on the
-        /// right. Starting is deferred until after the layout block closes, so
-        /// the match doesn't begin midway through building this frame's GUI.
-        /// </summary>
-        private void DrawStartMenu()
-        {
-            const float width = 900f;
-            const float height = 560f;
-            const float modeColumnWidth = 330f;
-
-            ApplyStartMenuDefaults();
-
-            GUILayout.BeginArea(
-                new Rect(
-                    (Screen.width - width) * 0.5f,
-                    Mathf.Max(PanelMargin, (Screen.height - height) * 0.5f),
-                    width,
-                    height),
-                panelStyle);
-
-            GUILayout.Label("ELEMENTAL LUDO", titleStyle);
-            GUILayout.Label("Elige cómo quieres jugar", subtitleStyle);
-            GUILayout.Space(14f);
-
-            GUILayout.BeginHorizontal();
-
-            GUILayout.BeginVertical(GUILayout.Width(modeColumnWidth));
-            GUILayout.Label("MODO", sectionLabelStyle);
-            GUILayout.Space(4f);
-            foreach (LudoGameMode mode in SelectableModes)
-            {
-                DrawModeCard(mode);
-            }
-
-            GUILayout.EndVertical();
-
-            GUILayout.Space(20f);
-
-            GUILayout.BeginVertical();
-            StartMenuAction action = DrawStartMenuOptions();
-            GUILayout.EndVertical();
-
-            GUILayout.EndHorizontal();
-            GUILayout.EndArea();
-
-            if (action == StartMenuAction.None)
-            {
-                return;
-            }
-
-            if (action == StartMenuAction.Continue)
-            {
-                controller.ContinueRun();
-                return;
-            }
-
-            // Adventure is the run now: picking it opens a map rather than
-            // dropping straight onto a board. Every other mode is still a
-            // single match started the way it always was.
-            if (setupMode == LudoGameMode.Adventure)
-            {
-                controller.StartRun(SelectedRunElement());
-                return;
-            }
-
-            controller.StartMatch(BuildMatchSettings());
-        }
-
-        /// <summary>
-        /// The element the run starts with, clamped to what has been unlocked
-        /// so a stale selection can never smuggle in a locked one.
-        /// </summary>
-        private LudoElement SelectedRunElement()
-        {
-            LudoElementProgress progress = controller.ElementProgress;
-            foreach (LudoElement element in progress.Unlocked())
-            {
-                if (element == setupRunElement)
-                {
-                    return element;
-                }
-            }
-
-            foreach (LudoElement element in progress.Unlocked())
-            {
-                return element;
-            }
-
-            return LudoElement.Fire;
-        }
-
-        /// <summary>
-        /// Which element to take into the run. Locked ones are shown greyed
-        /// rather than hidden, so the player can see what finishing a run is
-        /// worth.
-        /// </summary>
-        private void DrawRunElementPicker()
-        {
-            LudoElementProgress progress = controller.ElementProgress;
-
-            GUILayout.Label("TU ELEMENTO", sectionLabelStyle);
-            GUILayout.Label(
-                progress.AllUnlocked
-                    ? "Los tienes todos."
-                    : "Completa una run para desbloquear el siguiente.",
-                hintStyle);
-            GUILayout.Space(4f);
-
-            foreach (LudoElement element in progress.UnlockOrder)
-            {
-                bool unlocked = progress.IsUnlocked(element);
-                bool selected = unlocked && element == SelectedRunElement();
-
-                GUI.enabled = unlocked;
-                if (GUILayout.Button(
-                        unlocked
-                            ? LudoElementInfo.DisplayName(element)
-                            : $"{LudoElementInfo.DisplayName(element)}  (bloqueado)",
-                        selected ? toggleOnStyle : toggleOffStyle))
-                {
-                    setupRunElement = element;
-                }
-
-                GUI.enabled = true;
-            }
-        }
-
-        /// <summary>
-        /// Seeds the menu from the controller's configured default the first
-        /// time it opens, so the Inspector value still means something.
-        /// </summary>
-        private void ApplyStartMenuDefaults()
-        {
-            if (setupDefaultsApplied)
-            {
-                return;
-            }
-
-            setupMode = controller.DefaultMode;
-            setupElementalRules = DefaultElementalRulesFor(setupMode);
-            setupSeatIndex = 0;
-            setupDefaultsApplied = true;
-        }
-
-        /// <summary>
-        /// Adventure is the elemental mode — the duels, the +5 advantage and
-        /// the upgrades planned on top of them all assume the layer is on, so
-        /// starting it switched off hides the mode's whole point behind a
-        /// toggle. The others stay opt-in.
-        /// </summary>
-        private static bool DefaultElementalRulesFor(LudoGameMode mode)
-        {
-            return mode == LudoGameMode.Adventure;
-        }
-
-        private void DrawModeCard(LudoGameMode mode)
-        {
-            bool isSelected = setupMode == mode;
-
-            GUILayout.BeginHorizontal();
-            GUILayout.Box(
-                string.Empty,
-                MakeAccentStyle(isSelected ? Color.white : new Color(1f, 1f, 1f, 0.18f)),
-                GUILayout.Width(4f),
-                GUILayout.ExpandHeight(true));
-            GUILayout.Space(8f);
-            GUILayout.BeginVertical();
-
-            if (GUILayout.Button(
-                    LudoGameModeInfo.DisplayName(mode),
-                    isSelected ? toggleOnStyle : toggleOffStyle))
-            {
-                setupMode = mode;
-
-                // Reset to the mode's own default rather than carrying the
-                // previous mode's answer across: Classic can't have the layer
-                // at all and Adventure is built around it, so a value that made
-                // sense for one is usually wrong for the next.
-                setupElementalRules =
-                    LudoMatchSettings.SupportsElementalRules(mode) &&
-                    DefaultElementalRulesFor(mode);
-            }
-
-            GUILayout.Label(LudoGameModeInfo.Summary(mode), hintStyle);
-            GUILayout.EndVertical();
-            GUILayout.EndHorizontal();
-            GUILayout.Space(8f);
-        }
-
-        /// <summary>What the start menu's right-hand column asked for this frame.</summary>
-        private enum StartMenuAction
-        {
-            None,
-            Start,
-            Continue
-        }
-
-        /// <summary>Right-hand column. Reports whichever action button was clicked.</summary>
-        private StartMenuAction DrawStartMenuOptions()
-        {
-            bool hasAI = setupMode != LudoGameMode.Multiplayer;
-
-            GUILayout.Label("OPCIONES", sectionLabelStyle);
-            GUILayout.Space(4f);
-
-            if (hasAI)
-            {
-                GUILayout.Label("Dificultad de la IA", ruleTitleStyle);
-                GUILayout.BeginHorizontal();
-                if (GUILayout.Button(
-                        "Fácil",
-                        setupDifficulty == LudoAIDifficulty.Easy ? toggleOnStyle : toggleOffStyle))
-                {
-                    setupDifficulty = LudoAIDifficulty.Easy;
-                }
-
-                if (GUILayout.Button(
-                        "Normal",
-                        setupDifficulty == LudoAIDifficulty.Normal ? toggleOnStyle : toggleOffStyle))
-                {
-                    setupDifficulty = LudoAIDifficulty.Normal;
-                }
-
-                GUILayout.EndHorizontal();
-                GUILayout.Label(
-                    setupDifficulty == LudoAIDifficulty.Easy
-                        ? "Avanza al azar y saca fichas cuando puede. Si captura, es casualidad."
-                        : "Prioriza capturar, formar barreras y no quedarse a tiro.",
-                    hintStyle);
-            }
-            else
-            {
-                GUILayout.Label("Sin IA: los cuatro colores son humanos.", hintStyle);
-            }
-
-            GUILayout.Space(12f);
-
-            if (LudoMatchSettings.SupportsElementalRules(setupMode))
-            {
-                if (GUILayout.Button(
-                        setupElementalRules
-                            ? "REGLAS ELEMENTALES: ON"
-                            : "REGLAS ELEMENTALES: OFF",
-                        setupElementalRules ? toggleOnStyle : toggleOffStyle))
-                {
-                    setupElementalRules = !setupElementalRules;
-                }
-
-                GUILayout.Label(
-                    setupElementalRules
-                        ? "Cada color juega con el poder de su elemento."
-                        : "Todos los colores juegan con las mismas reglas.",
-                    hintStyle);
-            }
-            else
-            {
-                GUILayout.Label(
-                    "Clásico no admite reglas elementales.",
-                    hintStyle);
-            }
-
-            GUILayout.Space(12f);
-
-            // Adventure picks its seat by element, and that choice is also the
-            // meta-progression, so it replaces the colour picker entirely.
-            if (setupMode == LudoGameMode.Adventure)
-            {
-                DrawRunElementPicker();
-            }
-            else
-            {
-                GUILayout.Label(hasAI ? "TU COLOR" : "COLORES EN JUEGO", sectionLabelStyle);
-                GUILayout.Space(4f);
-                DrawSeatPicker(hasAI);
-            }
-
-            GUILayout.FlexibleSpace();
-
-            StartMenuAction action = StartMenuAction.None;
-
-            // Only Adventure has a run to pick back up, and only when one was
-            // actually left on the map — a duel, a match or an unclaimed
-            // reward never makes it to disk, so there is nothing to offer.
-            if (setupMode == LudoGameMode.Adventure && controller.HasSavedRun)
-            {
-                if (GUILayout.Button("CONTINUAR AVENTURA", toggleOffStyle))
-                {
-                    action = StartMenuAction.Continue;
-                }
-
-                GUILayout.Space(6f);
-            }
-
-            if (GUILayout.Button("EMPEZAR", primaryButtonStyle))
-            {
-                action = StartMenuAction.Start;
-            }
-
-            return action;
-        }
-
-        private void DrawSeatPicker(bool selectable)
-        {
-            IReadOnlyList<LudoPlayerState> seats = controller.Players;
-            for (int index = 0; index < seats.Count; index++)
-            {
-                LudoPlayerState seat = seats[index];
-                bool isChosen = selectable && index == setupSeatIndex;
-
-                GUILayout.BeginHorizontal();
-                GUILayout.Box(
-                    string.Empty,
-                    MakeAccentStyle(seat.Style.TokenColor),
-                    GUILayout.Width(5f),
-                    GUILayout.Height(24f));
-                GUILayout.Space(8f);
-
-                string label = setupElementalRules
-                    ? ElementHeading(seat)
-                    : LudoGameController.SpanishColorName(seat.Style.PlayerId);
-
-                if (!selectable)
-                {
-                    GUILayout.Label(label, ruleTitleStyle);
-                }
-                else if (GUILayout.Button(label, isChosen ? toggleOnStyle : toggleOffStyle))
-                {
-                    setupSeatIndex = index;
-                }
-
-                GUILayout.EndHorizontal();
-                GUILayout.Space(4f);
-            }
-
-            if (selectable && setupElementalRules && setupSeatIndex < seats.Count)
-            {
-                GUILayout.Space(2f);
-                GUILayout.Label(
-                    LudoElementInfo.RuleSummary(seats[setupSeatIndex].Element),
-                    hintStyle);
-            }
-        }
-
-        private LudoMatchSettings BuildMatchSettings()
-        {
-            IReadOnlyList<LudoPlayerState> seats = controller.Players;
-            int seatIndex = Mathf.Clamp(setupSeatIndex, 0, Mathf.Max(0, seats.Count - 1));
-            LudoElement seatElement = seats.Count > 0
-                ? seats[seatIndex].Element
-                : default;
-
-            return new LudoMatchSettings(
-                setupMode,
-                seatElement,
-                setupDifficulty,
-                setupElementalRules);
         }
 
         private void DrawElementalRuleLine(Color accentColor, string title, string description)
