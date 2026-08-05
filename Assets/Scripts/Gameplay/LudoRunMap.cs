@@ -42,14 +42,18 @@ namespace ElementalLudo.Gameplay
         /// opens by choosing what to carry rather than by fighting, and the
         /// last stage is the boss alone, so every path converges on it.
         /// </summary>
-        public static LudoRunMap Generate(int stageCount, int seed)
+        public static LudoRunMap Generate(
+            int stageCount,
+            int seed,
+            LudoElement playerElement)
         {
             int total = stageCount < MinimumStages ? MinimumStages : stageCount;
             System.Random random = new System.Random(seed);
 
             List<List<LudoRunNodeKind>> kinds = BuildKinds(total, random);
             List<List<List<int>>> links = BuildLinks(kinds, random);
-            List<List<LudoElement>> rivals = BuildRivals(kinds, random);
+            List<List<LudoElement>> rivals =
+                BuildRivals(kinds, random, playerElement);
 
             List<List<LudoRunNode>> stages = new List<List<LudoRunNode>>(total);
             for (int stage = 0; stage < total; stage++)
@@ -167,18 +171,33 @@ namespace ElementalLudo.Gameplay
         /// Reward nodes get an element too. It is never used, but leaving a
         /// hole in the stream would make every later draw depend on how many
         /// rewards happened to come up.
+        ///
+        /// The player's own element is excluded. A seat only exists once, so a
+        /// node claiming to hold the player's element had to be quietly swapped
+        /// for a different one when the fight actually started — and the map
+        /// had already promised the wrong opponent.
         /// </summary>
         private static List<List<LudoElement>> BuildRivals(
             List<List<LudoRunNodeKind>> kinds,
-            System.Random random)
+            System.Random random,
+            LudoElement playerElement)
         {
-            LudoElement[] elements =
+            List<LudoElement> pool = new List<LudoElement>(4);
+            foreach (LudoElement candidate in new[]
+                     {
+                         LudoElement.Fire,
+                         LudoElement.Water,
+                         LudoElement.Lightning,
+                         LudoElement.Plant
+                     })
             {
-                LudoElement.Fire,
-                LudoElement.Water,
-                LudoElement.Lightning,
-                LudoElement.Plant
-            };
+                if (candidate != playerElement)
+                {
+                    pool.Add(candidate);
+                }
+            }
+
+            LudoElement[] elements = pool.ToArray();
 
             List<List<LudoElement>> rivals =
                 new List<List<LudoElement>>(kinds.Count);

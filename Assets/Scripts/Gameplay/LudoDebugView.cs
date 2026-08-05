@@ -239,6 +239,12 @@ namespace ElementalLudo.Gameplay
             }
 
             GUILayout.EndArea();
+
+            // The map is the only moment upgrades can be armed. A duel hides
+            // every board panel, and the run is nearly all duels now — so
+            // without this the rewards being collected had nowhere to be
+            // switched on and quietly did nothing.
+            DrawUpgradesPanel();
         }
 
         /// <summary>
@@ -393,17 +399,22 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
+            // Under whichever panel is above it: the run's legend is shorter
+            // than a match's controls, so the two screens put it at different
+            // heights rather than leaving a gap on one of them.
+            float top = controller.CurrentRun != null
+                ? PanelMargin + 330f
+                : PanelMargin + 570f;
+
             GUILayout.BeginArea(
-                new Rect(
-                    PanelMargin,
-                    PanelMargin + 570f,
-                    PanelWidth,
-                    UpgradePanelHeight),
+                new Rect(PanelMargin, top, PanelWidth, UpgradePanelHeight),
                 panelStyle);
 
             GUILayout.Label("MEJORAS", sectionLabelStyle);
             GUILayout.Label(
-                "Se activan y se gastan al usarse. No están siempre activas.",
+                controller.CurrentRun != null
+                    ? "Actívalas ahora: se gastan en el siguiente combate."
+                    : "Se activan y se gastan al usarse. No están siempre activas.",
                 hintStyle);
             GUILayout.Space(6f);
 

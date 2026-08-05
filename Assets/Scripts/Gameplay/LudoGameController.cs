@@ -492,7 +492,10 @@ namespace ElementalLudo.Gameplay
 
             currentRun = new LudoRunState(
                 element,
-                LudoRunMap.Generate(RunStageCount, UnityEngine.Random.Range(0, int.MaxValue)));
+                LudoRunMap.Generate(
+                    RunStageCount,
+                    UnityEngine.Random.Range(0, int.MaxValue),
+                    element));
             // Settled once for the whole run rather than by whichever match
             // last happened to run. A loose combat never goes through
             // StartMatch, so without this its duels read elemental rules off a
@@ -692,7 +695,9 @@ namespace ElementalLudo.Gameplay
             int playerSeat = SeatForElement(currentRun.Element);
 
             // The rival the map promised, not a fresh roll. Picking one here
-            // would make the elemental matchup shown on the map a lie.
+            // would make the elemental matchup shown on the map a lie — which
+            // it was, until rivals stopped being generated as the player's own
+            // element and needing a silent swap. The guard stays as a net.
             int rivalSeat = SeatForElement(currentRun.CurrentNode.RivalElement);
             if (rivalSeat == playerSeat)
             {
@@ -2179,8 +2184,24 @@ namespace ElementalLudo.Gameplay
                 else
                 {
                     LudoCombatHand hand = combatSession.CurrentHand;
+
+                    // Only the defender has something to aim at: it throws
+                    // second, so the score to beat is already fixed. The
+                    // attacker goes first with no target and keeps pushing.
+                    bool playingToTarget =
+                        combatSession.Phase == LudoCombatPhase.DefenderTurn;
+                    int target = playingToTarget ? combatSession.ScoreToBeat : 0;
+
                     while (hand != null && hand.CanReroll)
                     {
+                        // Stops the moment it is already winning. Ties go to the
+                        // defender, so matching the target is enough — and
+                        // rerolling from there could only throw the duel away.
+                        if (playingToTarget && hand.Evaluate().Score >= target)
+                        {
+                            break;
+                        }
+
                         int index = LudoCombatResolver.SuggestReroll(hand.Dice);
                         if (index < 0 || !hand.TryReroll(index))
                         {
