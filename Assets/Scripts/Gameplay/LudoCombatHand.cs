@@ -47,12 +47,24 @@ namespace ElementalLudo.Gameplay
         /// <summary>The elemental edge inside <see cref="Modifiers"/>.</summary>
         public int ElementBonus => Modifiers.ElementBonus;
 
+        /// <summary>
+        /// One die, respecting whatever floor the modifiers set. Applied here
+        /// rather than at scoring so a floored die really is that number and
+        /// counts toward sets like any other.
+        /// </summary>
+        private int Throw()
+        {
+            return Mathf.Max(
+                UnityEngine.Random.Range(1, 7),
+                Modifiers.MinimumFace);
+        }
+
         /// <summary>Opening throw. Doesn't cost a reroll.</summary>
         public void ThrowAll()
         {
             for (int index = 0; index < dice.Length; index++)
             {
-                dice[index] = UnityEngine.Random.Range(1, 7);
+                dice[index] = Throw();
             }
         }
 
@@ -64,7 +76,7 @@ namespace ElementalLudo.Gameplay
                 return false;
             }
 
-            dice[index] = UnityEngine.Random.Range(1, 7);
+            dice[index] = Throw();
             RerollsLeft--;
             return true;
         }

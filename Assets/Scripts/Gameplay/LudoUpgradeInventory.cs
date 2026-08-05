@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace ElementalLudo.Gameplay
 {
@@ -23,7 +24,20 @@ namespace ElementalLudo.Gameplay
             Armed = true;
         }
 
-        public LudoUpgrade Upgrade { get; }
+        public LudoUpgrade Upgrade { get; private set; }
+
+        /// <summary>
+        /// Raises the level and tops the charges back up, so taking the same
+        /// reward twice deepens it rather than filling the panel with copies.
+        /// </summary>
+        internal void LevelUp()
+        {
+            LudoUpgrade next = Upgrade.AtLevel(Upgrade.Level + 1);
+            int spent = Upgrade.Charges - ChargesLeft;
+            Upgrade = next;
+            ChargesLeft = Mathf.Max(1, next.Charges - spent);
+            Armed = true;
+        }
         public int ChargesLeft { get; internal set; }
         public bool Armed { get; internal set; }
 
@@ -41,6 +55,10 @@ namespace ElementalLudo.Gameplay
     /// </summary>
     public sealed class LudoUpgradeInventory
     {
+        /// <summary>Ceilings on the two effects that otherwise decide the duel outright.</summary>
+        public const int MaxExtraDice = 2;
+        public const int MaxMinimumFace = 3;
+
         private readonly List<LudoUpgradeSlot> slots = new List<LudoUpgradeSlot>();
 
         public IReadOnlyList<LudoUpgradeSlot> Slots => slots;
@@ -78,9 +96,36 @@ namespace ElementalLudo.Gameplay
             }
         }
 
-        public void Grant(LudoUpgrade upgrade)
+        /// <summary>
+        /// Adds an upgrade, or deepens the one already held. Returns the slot
+        /// either way, so the caller can say which happened.
+        /// </summary>
+        public LudoUpgradeSlot Grant(LudoUpgrade upgrade)
         {
-            slots.Add(new LudoUpgradeSlot(upgrade));
+            LudoUpgradeSlot existing = Find(upgrade);
+            if (existing != null)
+            {
+                existing.LevelUp();
+                return existing;
+            }
+
+            LudoUpgradeSlot slot = new LudoUpgradeSlot(upgrade);
+            slots.Add(slot);
+            return slot;
+        }
+
+        /// <summary>The slot already holding this upgrade, or null.</summary>
+        public LudoUpgradeSlot Find(LudoUpgrade upgrade)
+        {
+            foreach (LudoUpgradeSlot slot in slots)
+            {
+                if (slot.Upgrade.SameAs(upgrade))
+                {
+                    return slot;
+                }
+            }
+
+            return null;
         }
 
         public void Grant(LudoUpgradeKind kind)
@@ -176,6 +221,7 @@ namespace ElementalLudo.Gameplay
             int extraRerolls = 0;
             int flatPips = 0;
             int elementalEdge = 0;
+            int minimumFace = 1;
             float[] handBoosts = null;
 
             foreach (LudoUpgradeSlot slot in slots)
@@ -205,6 +251,14 @@ namespace ElementalLudo.Gameplay
                         elementalEdge += upgrade.WholeMagnitude;
                         break;
 
+                    case LudoUpgradeKind.LoadedDice:
+                        // The highest floor wins rather than adding up, since
+                        // two floors are just the stricter of the two.
+                        minimumFace = Mathf.Max(
+                            minimumFace,
+                            1 + upgrade.WholeMagnitude);
+                        break;
+
                     case LudoUpgradeKind.HandMastery:
                         handBoosts ??= new float[System.Enum.GetValues(typeof(LudoDiceHand)).Length];
                         int index = (int)upgrade.TargetHand;
@@ -217,6 +271,14 @@ namespace ElementalLudo.Gameplay
                 }
             }
 
+            // Two upgrades run away with the duel if left to scale freely.
+            // Measured across levels, a third extra die reaches 90% and a floor
+            // of four reaches 92% — past that a fight stops being one. Both are
+            // held at their level-two strength, so further levels still buy
+            // charges but no longer buy certainty.
+            extraDice = Mathf.Min(extraDice, MaxExtraDice);
+            minimumFace = Mathf.Min(minimumFace, MaxMinimumFace);
+
             // The edge only sharpens an advantage that already exists — it
             // never invents one out of a neutral or losing matchup.
             int totalElementBonus = elementBonus > 0
@@ -228,7 +290,8 @@ namespace ElementalLudo.Gameplay
                 extraRerolls,
                 flatPips,
                 totalElementBonus,
-                handBoosts);
+                handBoosts,
+                minimumFace);
         }
 
         /// <summary>

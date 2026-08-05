@@ -29,6 +29,9 @@ namespace ElementalLudo.Gameplay
         /// <summary>A better multiplier for one named combination.</summary>
         HandMastery,
 
+        /// <summary>Dice can never land below a face, so bad throws get a floor.</summary>
+        LoadedDice,
+
         /// <summary>Ignore the obligation to break your own barrier on a 6.</summary>
         BarrierExemption,
 

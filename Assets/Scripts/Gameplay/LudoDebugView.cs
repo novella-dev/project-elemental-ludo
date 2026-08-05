@@ -371,7 +371,7 @@ namespace ElementalLudo.Gameplay
 
                 GUILayout.BeginVertical(panelStyle);
                 if (GUILayout.Button(
-                        LudoUpgradeInfo.DisplayName(upgrade.Kind),
+                        LudoUpgradeInfo.DisplayName(upgrade),
                         primaryButtonStyle))
                 {
                     controller.ClaimReward(index);
@@ -380,10 +380,23 @@ namespace ElementalLudo.Gameplay
                 GUILayout.Label(LudoUpgradeInfo.Describe(upgrade), hintStyle);
                 GUILayout.Label(
                     $"{upgrade.Charges} usos · " +
-                    $"{LudoUpgradeInfo.ScopeName(upgrade.Scope)}",
+                    $"{LudoUpgradeInfo.ScopeName(upgrade.Scope)}" +
+                    (upgrade.Level > 1 ? "  ·  sube de nivel" : string.Empty),
                     hintStyle);
                 GUILayout.EndVertical();
                 GUILayout.Space(6f);
+            }
+
+            LudoRunState run = controller.CurrentRun;
+            if (run != null && run.RefreshesLeft > 0)
+            {
+                GUILayout.Space(4f);
+                if (GUILayout.Button(
+                        $"Cambiar las tres ({run.RefreshesLeft} disponible)",
+                        endMatchButtonStyle))
+                {
+                    controller.TryRefreshRewardOffer();
+                }
             }
 
             GUILayout.EndArea();
@@ -444,8 +457,8 @@ namespace ElementalLudo.Gameplay
             // only greys out one that ran dry during the duel on screen.
             GUI.enabled = !spent;
             string label = slot.Armed
-                ? $"◆ {LudoUpgradeInfo.DisplayName(upgrade.Kind)}"
-                : LudoUpgradeInfo.DisplayName(upgrade.Kind);
+                ? $"◆ {LudoUpgradeInfo.DisplayName(upgrade)}"
+                : LudoUpgradeInfo.DisplayName(upgrade);
 
             if (GUILayout.Button(
                     label,

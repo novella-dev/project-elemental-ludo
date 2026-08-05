@@ -30,14 +30,23 @@ namespace ElementalLudo.Gameplay
             int extraRerolls,
             int flatPips,
             int elementBonus,
-            float[] handBoosts)
+            float[] handBoosts,
+            int minimumFace = 1)
         {
             ExtraDice = Mathf.Max(0, extraDice);
             ExtraRerolls = Mathf.Max(0, extraRerolls);
             FlatPips = flatPips;
             ElementBonus = elementBonus;
             this.handBoosts = handBoosts;
+            MinimumFace = Mathf.Clamp(minimumFace, 1, 6);
         }
+
+        /// <summary>
+        /// The lowest face a die may land on. Applied at the throw rather than
+        /// at scoring, so a floored die genuinely is that number — it counts
+        /// toward sets and straights like any other.
+        /// </summary>
+        public int MinimumFace { get; }
 
         /// <summary>Dice beyond the standard five.</summary>
         public int ExtraDice { get; }
@@ -56,6 +65,7 @@ namespace ElementalLudo.Gameplay
             ExtraRerolls != 0 ||
             FlatPips != 0 ||
             ElementBonus != 0 ||
+            MinimumFace > 1 ||
             handBoosts != null;
 
         /// <summary>Extra multiplier for one combination, or zero.</summary>
@@ -82,7 +92,8 @@ namespace ElementalLudo.Gameplay
                 ExtraRerolls,
                 FlatPips,
                 elementBonus,
-                handBoosts);
+                handBoosts,
+                MinimumFace);
         }
     }
 }

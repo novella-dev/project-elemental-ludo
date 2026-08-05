@@ -46,12 +46,20 @@ namespace ElementalLudo.Gameplay
         /// <summary>How many lives a heal node gives back.</summary>
         public const int HealAmount = 2;
 
+        /// <summary>
+        /// Chances to throw a reward offer back and draw three others. One per
+        /// run: enough to rescue a build from an offer that fits nothing, not
+        /// enough to shop until the right thing turns up.
+        /// </summary>
+        public const int RewardRefreshes = 1;
+
         public LudoRunState(LudoElement element, LudoRunMap map)
         {
             Element = element;
             Map = map;
             Upgrades = new LudoUpgradeInventory();
             Lives = MaxLives;
+            RefreshesLeft = RewardRefreshes;
             Stage = 0;
             Lane = 0;
             Status = LudoRunStatus.AtNode;
@@ -63,6 +71,20 @@ namespace ElementalLudo.Gameplay
         /// At zero the run is over.
         /// </summary>
         public int Lives { get; private set; }
+
+        /// <summary>Reward refreshes still available this run.</summary>
+        public int RefreshesLeft { get; private set; }
+
+        public bool TrySpendRefresh()
+        {
+            if (RefreshesLeft <= 0)
+            {
+                return false;
+            }
+
+            RefreshesLeft--;
+            return true;
+        }
 
         /// <summary>Tops up to the cap, returning how many were actually given back.</summary>
         public int Heal()

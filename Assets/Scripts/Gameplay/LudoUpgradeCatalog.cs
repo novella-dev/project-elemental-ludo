@@ -3,16 +3,12 @@ using System.Collections.Generic;
 namespace ElementalLudo.Gameplay
 {
     /// <summary>
-    /// The upgrades that exist, with their default strength and charge count.
+    /// The upgrades that exist, what a level of each is worth, and which ones a
+    /// run may offer.
     ///
-    /// Scope is worked out from the kind rather than stored on the upgrade, so
-    /// a granted upgrade cannot end up claiming a scope its effect does not
-    /// actually have — there is one answer per kind and this is where it lives.
-    ///
-    /// Balance numbers sit here rather than in the effects themselves so they
-    /// can all be read, and retuned, in one place. Nothing reads this at
-    /// runtime except whatever hands upgrades out; the fold in
-    /// <see cref="LudoUpgradeInventory"/> works off the granted upgrade.
+    /// Balance numbers all live here so they can be read and retuned in one
+    /// place. Every figure below was measured at 200-300k simulated duels
+    /// against an unupgraded rival, where an unarmed attacker wins 48.4%.
     /// </summary>
     public static class LudoUpgradeCatalog
     {
@@ -27,65 +23,112 @@ namespace ElementalLudo.Gameplay
         }
 
         /// <summary>
-        /// The standard version of each upgrade. A run that wants a stronger or
-        /// weaker copy builds its own <see cref="LudoUpgrade"/> instead — these
-        /// are the defaults, not the only allowed values.
-        ///
-        /// Every magnitude below was measured at 200k simulated duels against
-        /// an unupgraded rival, where an unarmed attacker wins 48.4%. The set
-        /// lands between 57% and 68%, with the strongest effect given the
-        /// fewest charges so power and availability trade off against each
-        /// other rather than stacking.
+        /// What one level is worth. A level 3 is three times this, so the ramp
+        /// is deliberately gentle: these stack, and stacking is the point.
         /// </summary>
-        public static LudoUpgrade Default(LudoUpgradeKind kind)
+        public static float MagnitudePerLevel(LudoUpgradeKind kind)
         {
             return kind switch
             {
-                // 67.9%, far and away the strongest, so it gets a single
-                // charge. A sixth die is worth much more than a sixth of the
-                // score: it lifts the pip floor and fills sets faster. It does
-                // make a straight rarer, not commoner — six dice need all six
-                // faces, where five have two ways to run — but the multiplier
-                // it loses there is dwarfed by what the extra pips gain.
-                LudoUpgradeKind.ExtraDie =>
-                    new LudoUpgrade(kind, 1f, 1),
+                // 67.7% at a single extra die, the strongest thing measured, so
+                // one level at a time and few charges to spend it on.
+                LudoUpgradeKind.ExtraDie => 1f,
 
-                // 58.4% at two extra. One alone was only 54.2%, barely worth
-                // the slot, because the AI's own reroll policy already stops
-                // early on a hand it cannot improve.
-                LudoUpgradeKind.ExtraReroll =>
-                    new LudoUpgrade(kind, 2f, 3),
+                // 54.2% at one, 58.4% at two — mild alone, worth levelling.
+                LudoUpgradeKind.ExtraReroll => 1f,
 
-                // 64.2% on top of the base +5, for +8 total. Held below the
-                // others' headline because it is the only conditional one: it
-                // does nothing at all unless the matchup already favours you,
-                // which is about half of duels.
-                LudoUpgradeKind.ElementalEdge =>
-                    new LudoUpgrade(kind, 3f, 2),
+                // 64.2% at +3 on top of the base +5, but only when the matchup
+                // already favours you, which is about half of duels.
+                LudoUpgradeKind.ElementalEdge => 3f,
 
-                // 60.0%. Before the multiplier, so a good hand compounds it.
-                LudoUpgradeKind.FlatPips =>
-                    new LudoUpgrade(kind, 3f, 3),
+                // 60.1% at +3 pips, applied before the multiplier.
+                LudoUpgradeKind.FlatPips => 3f,
 
-                // 56.7% on Full. Full is the default target because rerolls
-                // make it the most common hand by far at 39.9% — the same boost
-                // on Trío managed 50.7%, near enough to nothing, because Trío
-                // only lands 13.4% of the time. Runs wanting a riskier
-                // specialisation build their own with a scarcer target hand.
-                LudoUpgradeKind.HandMastery =>
-                    new LudoUpgrade(kind, 1f, 2, LudoDiceHand.FullHouse),
+                // Depends on which hand — see MasteryPerLevel.
+                LudoUpgradeKind.HandMastery => 0.8f,
 
-                LudoUpgradeKind.BarrierExemption =>
-                    new LudoUpgrade(kind, 1f, 2),
+                // A level raises the floor by one face: Lvl 1 means no ones.
+                LudoUpgradeKind.LoadedDice => 1f,
 
-                LudoUpgradeKind.MovementRethrow =>
-                    new LudoUpgrade(kind, 1f, 2),
-
-                _ => new LudoUpgrade(kind, 1f, 1)
+                _ => 1f
             };
         }
 
-        /// <summary>Every kind, in the order they should be offered or listed.</summary>
+        /// <summary>
+        /// Mastery scales against how often its hand actually turns up, so a
+        /// rarer target is worth more per level. Measured at 200k duels each:
+        /// a full house lands 39.9% of the time and +0.8 puts it at 55.5%,
+        /// while three of a kind lands 13.4% and needs +1.8 to reach 54.8%.
+        ///
+        /// Póker and escalera are deliberately absent. Boosting them barely
+        /// moved the needle at any magnitude — +6.0 on a straight was worth
+        /// half a point — because the reroll strategy has no way to steer
+        /// toward them, so the hand simply never arrives to be rewarded.
+        /// </summary>
+        public static float MasteryPerLevel(LudoDiceHand hand)
+        {
+            return hand switch
+            {
+                LudoDiceHand.FullHouse => 0.8f,
+                LudoDiceHand.TwoPair => 0.7f,
+                LudoDiceHand.ThreeOfAKind => 1.8f,
+                _ => 0.8f
+            };
+        }
+
+        /// <summary>
+        /// Uses granted. Levelling adds one, so a levelled upgrade is both
+        /// stronger and available more often.
+        /// </summary>
+        public static int ChargesFor(LudoUpgradeKind kind, int level)
+        {
+            int baseCharges = kind switch
+            {
+                LudoUpgradeKind.ExtraDie => 1,
+                LudoUpgradeKind.ElementalEdge => 2,
+                LudoUpgradeKind.HandMastery => 2,
+                LudoUpgradeKind.LoadedDice => 2,
+                _ => 3
+            };
+
+            return baseCharges + (level - 1);
+        }
+
+        public static LudoUpgrade Default(LudoUpgradeKind kind)
+        {
+            return kind == LudoUpgradeKind.HandMastery
+                ? new LudoUpgrade(kind, 1, LudoDiceHand.FullHouse)
+                : new LudoUpgrade(kind);
+        }
+
+        /// <summary>
+        /// Everything a run may offer as a reward, at level one.
+        ///
+        /// Only duel-scoped upgrades appear. A run is almost entirely arena
+        /// fights now — the board game happens once, at the very end — so the
+        /// movement upgrades were being handed out for something the player
+        /// would meet at most once and often never. They remain in the model
+        /// for the final game and for whatever A4 and A5 bring.
+        ///
+        /// Mastery appears once per combination rather than once overall: they
+        /// level separately, and choosing which hand to specialise in is a
+        /// different decision each time.
+        /// </summary>
+        public static IReadOnlyList<LudoUpgrade> RewardPool => Pool;
+
+        private static readonly LudoUpgrade[] Pool =
+        {
+            new LudoUpgrade(LudoUpgradeKind.ExtraDie),
+            new LudoUpgrade(LudoUpgradeKind.ExtraReroll),
+            new LudoUpgrade(LudoUpgradeKind.ElementalEdge),
+            new LudoUpgrade(LudoUpgradeKind.FlatPips),
+            new LudoUpgrade(LudoUpgradeKind.HandMastery, 1, LudoDiceHand.FullHouse),
+            new LudoUpgrade(LudoUpgradeKind.HandMastery, 1, LudoDiceHand.TwoPair),
+            new LudoUpgrade(LudoUpgradeKind.HandMastery, 1, LudoDiceHand.ThreeOfAKind),
+            new LudoUpgrade(LudoUpgradeKind.LoadedDice)
+        };
+
+        /// <summary>Every kind, in the order they should be listed.</summary>
         public static IReadOnlyList<LudoUpgradeKind> AllKinds => Kinds;
 
         private static readonly LudoUpgradeKind[] Kinds =
@@ -95,6 +138,7 @@ namespace ElementalLudo.Gameplay
             LudoUpgradeKind.ElementalEdge,
             LudoUpgradeKind.FlatPips,
             LudoUpgradeKind.HandMastery,
+            LudoUpgradeKind.LoadedDice,
             LudoUpgradeKind.BarrierExemption,
             LudoUpgradeKind.MovementRethrow
         };

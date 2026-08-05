@@ -831,20 +831,67 @@ namespace ElementalLudo.Gameplay
         private void OfferReward(LudoRunNodeKind kind)
         {
             rewardOffer.Clear();
-            List<LudoUpgradeKind> pool = new List<LudoUpgradeKind>(
-                LudoUpgradeCatalog.AllKinds);
+            List<LudoUpgrade> pool = new List<LudoUpgrade>(
+                LudoUpgradeCatalog.RewardPool);
 
             if (kind != LudoRunNodeKind.Elite)
             {
-                pool.Remove(LudoUpgradeKind.ExtraDie);
+                pool.RemoveAll(
+                    candidate => candidate.Kind == LudoUpgradeKind.ExtraDie);
             }
 
+            DrawRewards(pool);
+        }
+
+        /// <summary>
+        /// Takes three distinct upgrades from a pool.
+        ///
+        /// Offers are shown at the level the player would end up with, so one
+        /// already held reads as the level-up it actually is rather than as a
+        /// duplicate of something they own.
+        /// </summary>
+        private void DrawRewards(List<LudoUpgrade> pool)
+        {
+            rewardOffer.Clear();
             for (int pick = 0; pick < 3 && pool.Count > 0; pick++)
             {
                 int index = UnityEngine.Random.Range(0, pool.Count);
-                rewardOffer.Add(LudoUpgradeCatalog.Default(pool[index]));
+                LudoUpgrade candidate = pool[index];
                 pool.RemoveAt(index);
+
+                LudoUpgradeSlot held = currentRun?.Upgrades.Find(candidate);
+                rewardOffer.Add(
+                    held != null
+                        ? candidate.AtLevel(held.Upgrade.Level + 1)
+                        : candidate);
             }
+        }
+
+        /// <summary>
+        /// Throws the current offer back for three others. Once per run, so a
+        /// hand that fits nothing can be escaped but not shopped through.
+        /// </summary>
+        public bool TryRefreshRewardOffer()
+        {
+            if (currentRun == null || !IsRewardPending ||
+                !currentRun.TrySpendRefresh())
+            {
+                return false;
+            }
+
+            List<LudoUpgrade> pool = new List<LudoUpgrade>(
+                LudoUpgradeCatalog.RewardPool);
+
+            // The upgrades just turned down are held back, so a refresh always
+            // shows something new rather than possibly the same three again.
+            foreach (LudoUpgrade offered in rewardOffer)
+            {
+                pool.RemoveAll(candidate => candidate.SameAs(offered));
+            }
+
+            DrawRewards(pool);
+            LogMove("Cambias las recompensas ofrecidas.");
+            return true;
         }
 
         /// <summary>Takes one of the offered upgrades and settles the node.</summary>
@@ -855,10 +902,14 @@ namespace ElementalLudo.Gameplay
                 return false;
             }
 
-            LudoUpgrade upgrade = rewardOffer[index];
-            currentRun.Upgrades.Grant(upgrade);
+            // Granted at level one whatever the offer showed: the inventory is
+            // what decides whether this is a new upgrade or a level-up, and
+            // letting the offer dictate the level would double-count one the
+            // player already holds.
+            LudoUpgrade upgrade = rewardOffer[index].AtLevel(1);
+            LudoUpgradeSlot slot = currentRun.Upgrades.Grant(upgrade);
             rewardOffer.Clear();
-            LogMove($"Recompensa: {LudoUpgradeInfo.DisplayName(upgrade.Kind)}.");
+            LogMove($"Recompensa: {LudoUpgradeInfo.DisplayName(slot.Upgrade)}.");
 
             // A reward node is only settled once its reward is taken; a fight
             // node was already settled when it was won.
