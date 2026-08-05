@@ -201,6 +201,9 @@ namespace ElementalLudo.Gameplay
         /// <summary>Which elements Adventure has been unlocked with.</summary>
         public LudoElementProgress ElementProgress => elementProgress;
 
+        /// <summary>Whether a run left on the map is waiting to be picked back up.</summary>
+        public bool HasSavedRun => LudoSaveService.HasSavedRun();
+
         /// <summary>The upgrades on offer right now, or empty.</summary>
         public IReadOnlyList<LudoUpgrade> RewardOffer => rewardOffer;
 
@@ -430,6 +433,8 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
+            LudoSaveService.LoadProgressInto(elementProgress);
+
             // Seats can't be handed out before the menu says who is playing
             // what, so nothing starts until StartMatch arrives.
             awaitingSetup = true;
@@ -452,8 +457,10 @@ namespace ElementalLudo.Gameplay
             CancelPendingDecisions();
             AbortCombat();
 
-            // Leaving for the menu gives the run up, since there is nowhere to
-            // put a half-finished one until A7 can save it.
+            // Clears the run from memory; the save on disk, if any, is
+            // whatever the last Choosing checkpoint left behind. A duel, a
+            // match or an unclaimed reward is never saved mid-way, so leaving
+            // from one of those forfeits it rather than resuming it.
             AbandonRun();
 
             awaitingSetup = true;
@@ -525,6 +532,39 @@ namespace ElementalLudo.Gameplay
             statusMessage = "Comienza la aventura.";
             LogMove($"Nueva run con {LudoElementInfo.DisplayName(element)}.");
             EnterCurrentRunNode();
+        }
+
+        /// <summary>
+        /// Picks a saved run back up, standing exactly where it was left
+        /// choosing its next node. Does nothing if there is no save, or the
+        /// file cannot be read back.
+        /// </summary>
+        public bool ContinueRun()
+        {
+            if (!initialized)
+            {
+                return false;
+            }
+
+            LudoRunState restored = LudoSaveService.LoadRun();
+            if (restored == null)
+            {
+                return false;
+            }
+
+            AbandonRun();
+            currentRun = restored;
+
+            // Same settling StartRun does: a loose combat never goes through
+            // StartMatch, so without this its duels read elemental rules off
+            // a stale struct.
+            settings = BuildRunMatchSettings(LudoRunNodeKind.Match);
+            elementalModeEnabled = settings.ElementalRules;
+
+            awaitingSetup = false;
+            statusMessage = "Continúas la aventura.";
+            LogMove($"Continúas la run con {LudoElementInfo.DisplayName(currentRun.Element)}.");
+            return true;
         }
 
         /// <summary>Drops the run without touching the elements already unlocked.</summary>
@@ -674,6 +714,7 @@ namespace ElementalLudo.Gameplay
                     : "Ya estabas al máximo.";
                 LogMove(statusMessage);
                 currentRun.ResolveCurrentNode(true);
+                AutosaveRun();
                 return;
             }
 
@@ -800,7 +841,9 @@ namespace ElementalLudo.Gameplay
 
             if (currentRun.Status == LudoRunStatus.Won)
             {
+                LudoSaveService.DeleteRun();
                 LudoElement? unlocked = elementProgress.UnlockNext();
+                LudoSaveService.SaveProgress(elementProgress);
                 statusMessage = unlocked.HasValue
                     ? $"¡Run completada! Desbloqueas {LudoElementInfo.DisplayName(unlocked.Value)}."
                     : "¡Run completada!";
@@ -810,6 +853,7 @@ namespace ElementalLudo.Gameplay
 
             if (currentRun.Status == LudoRunStatus.Lost)
             {
+                LudoSaveService.DeleteRun();
                 statusMessage = "La run termina aquí.";
                 LogMove(statusMessage);
                 return;
@@ -823,6 +867,7 @@ namespace ElementalLudo.Gameplay
                 statusMessage =
                     $"Pierdes el combate. Te quedan {currentRun.Lives} vida(s).";
                 LogMove(statusMessage);
+                AutosaveRun();
                 return;
             }
 
@@ -924,7 +969,26 @@ namespace ElementalLudo.Gameplay
                 currentRun.ResolveCurrentNode(true);
             }
 
+            AutosaveRun();
             return true;
+        }
+
+        /// <summary>
+        /// Writes the run to disk the moment it is actually safe to: standing
+        /// on the map with the next node not yet chosen and nothing left to
+        /// claim. A duel, a match and a pending reward offer all fall outside
+        /// that window on purpose — none of the three is captured by
+        /// <see cref="LudoRunSaveData"/>, so saving mid-way would mean
+        /// resuming with them silently gone.
+        /// </summary>
+        private void AutosaveRun()
+        {
+            if (currentRun != null &&
+                currentRun.Status == LudoRunStatus.Choosing &&
+                !IsRewardPending)
+            {
+                LudoSaveService.SaveRun(currentRun);
+            }
         }
 
         private LudoMatchSettings BuildRunMatchSettings(LudoRunNodeKind kind)

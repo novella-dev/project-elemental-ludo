@@ -956,14 +956,20 @@ namespace ElementalLudo.Gameplay
             GUILayout.Space(20f);
 
             GUILayout.BeginVertical();
-            bool start = DrawStartMenuOptions();
+            StartMenuAction action = DrawStartMenuOptions();
             GUILayout.EndVertical();
 
             GUILayout.EndHorizontal();
             GUILayout.EndArea();
 
-            if (!start)
+            if (action == StartMenuAction.None)
             {
+                return;
+            }
+
+            if (action == StartMenuAction.Continue)
+            {
+                controller.ContinueRun();
                 return;
             }
 
@@ -1100,8 +1106,16 @@ namespace ElementalLudo.Gameplay
             GUILayout.Space(8f);
         }
 
-        /// <summary>Right-hand column. Returns true when the player starts.</summary>
-        private bool DrawStartMenuOptions()
+        /// <summary>What the start menu's right-hand column asked for this frame.</summary>
+        private enum StartMenuAction
+        {
+            None,
+            Start,
+            Continue
+        }
+
+        /// <summary>Right-hand column. Reports whichever action button was clicked.</summary>
+        private StartMenuAction DrawStartMenuOptions()
         {
             bool hasAI = setupMode != LudoGameMode.Multiplayer;
 
@@ -1180,7 +1194,28 @@ namespace ElementalLudo.Gameplay
             }
 
             GUILayout.FlexibleSpace();
-            return GUILayout.Button("EMPEZAR", primaryButtonStyle);
+
+            StartMenuAction action = StartMenuAction.None;
+
+            // Only Adventure has a run to pick back up, and only when one was
+            // actually left on the map — a duel, a match or an unclaimed
+            // reward never makes it to disk, so there is nothing to offer.
+            if (setupMode == LudoGameMode.Adventure && controller.HasSavedRun)
+            {
+                if (GUILayout.Button("CONTINUAR AVENTURA", toggleOffStyle))
+                {
+                    action = StartMenuAction.Continue;
+                }
+
+                GUILayout.Space(6f);
+            }
+
+            if (GUILayout.Button("EMPEZAR", primaryButtonStyle))
+            {
+                action = StartMenuAction.Start;
+            }
+
+            return action;
         }
 
         private void DrawSeatPicker(bool selectable)

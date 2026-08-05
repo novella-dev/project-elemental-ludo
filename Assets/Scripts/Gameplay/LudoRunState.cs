@@ -66,6 +66,53 @@ namespace ElementalLudo.Gameplay
             path.Add(map.Node(0, 0));
         }
 
+        private LudoRunState(
+            LudoElement element,
+            LudoRunMap map,
+            int stage,
+            int lane,
+            int lives,
+            int refreshesLeft,
+            IReadOnlyList<LudoRunPathStepSaveData> savedPath)
+        {
+            Element = element;
+            Map = map;
+            Upgrades = new LudoUpgradeInventory();
+            Lives = lives;
+            RefreshesLeft = refreshesLeft;
+            Stage = stage;
+            Lane = lane;
+            Status = LudoRunStatus.Choosing;
+
+            foreach (LudoRunPathStepSaveData step in savedPath)
+            {
+                path.Add(map.Node(step.stage, step.lane));
+            }
+
+            RebuildChoices();
+        }
+
+        /// <summary>
+        /// Rebuilds a run from what <see cref="LudoSaveService"/> kept: the
+        /// map is regenerated from its seed rather than stored, so this only
+        /// ever restores the walk across it and what the run picked up along
+        /// the way. Always lands the run in <see cref="LudoRunStatus.Choosing"/>
+        /// — the only status a save is ever taken in, since a duel, a match
+        /// and a pending reward offer are exactly the things a save cannot
+        /// capture.
+        /// </summary>
+        internal static LudoRunState Restore(
+            LudoElement element,
+            LudoRunMap map,
+            int stage,
+            int lane,
+            int lives,
+            int refreshesLeft,
+            IReadOnlyList<LudoRunPathStepSaveData> savedPath)
+        {
+            return new LudoRunState(element, map, stage, lane, lives, refreshesLeft, savedPath);
+        }
+
         /// <summary>
         /// Lives left, and so the number of tokens the final game starts with.
         /// At zero the run is over.

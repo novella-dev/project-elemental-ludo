@@ -24,6 +24,14 @@ namespace ElementalLudo.Gameplay
             Armed = true;
         }
 
+        /// <summary>Rebuilds a slot exactly as a save left it, bypassing the fresh-grant defaults above.</summary>
+        internal LudoUpgradeSlot(LudoUpgrade upgrade, int chargesLeft, bool armed)
+        {
+            Upgrade = upgrade;
+            ChargesLeft = chargesLeft;
+            Armed = armed;
+        }
+
         public LudoUpgrade Upgrade { get; private set; }
 
         /// <summary>
@@ -131,6 +139,12 @@ namespace ElementalLudo.Gameplay
         public void Grant(LudoUpgradeKind kind)
         {
             Grant(LudoUpgradeCatalog.Default(kind));
+        }
+
+        /// <summary>Adds a slot with saved charge/armed state, for <see cref="LudoSaveService"/> alone.</summary>
+        internal void RestoreSlot(LudoUpgrade upgrade, int chargesLeft, bool armed)
+        {
+            slots.Add(new LudoUpgradeSlot(upgrade, chargesLeft, armed));
         }
 
         public void Clear()

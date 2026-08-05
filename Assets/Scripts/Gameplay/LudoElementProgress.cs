@@ -74,5 +74,25 @@ namespace ElementalLudo.Gameplay
             unlocked.Clear();
             unlocked.Add(Order[0]);
         }
+
+        /// <summary>
+        /// Replaces the unlocked set with a saved one, for
+        /// <see cref="LudoSaveService"/> alone. Falls back to the starting
+        /// element if the save somehow held none, so the invariant that at
+        /// least one element is always playable survives a bad file.
+        /// </summary>
+        internal void Restore(IEnumerable<LudoElement> unlockedElements)
+        {
+            unlocked.Clear();
+            foreach (LudoElement element in unlockedElements)
+            {
+                unlocked.Add(element);
+            }
+
+            if (unlocked.Count == 0)
+            {
+                unlocked.Add(Order[0]);
+            }
+        }
     }
 }
