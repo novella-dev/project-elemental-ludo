@@ -114,6 +114,53 @@ namespace ElementalLudo.Board
             }
         }
 
+        /// <summary>
+        /// A cone band: a ring that changes radius as it changes height, for
+        /// bevels and tapers.
+        ///
+        /// Worth having rather than stacking cylinders, because the cel shader
+        /// bands light by surface angle and a flat-topped stack only ever
+        /// produces two of them — every top face lands in the same band. A
+        /// sloped face is what actually makes procedural geometry read as
+        /// solid instead of cut from paper.
+        /// </summary>
+        public void AddFrustum(
+            Vector2 center,
+            float bottomRadius,
+            float topRadius,
+            float bottomZ,
+            float topZ,
+            int segments,
+            Color bottomColor,
+            Color topColor)
+        {
+            float deltaRadius = topRadius - bottomRadius;
+            float deltaZ = topZ - bottomZ;
+
+            for (int segment = 0; segment < segments; segment++)
+            {
+                float a0 = Mathf.PI * 2f * segment / segments;
+                float a1 = Mathf.PI * 2f * (segment + 1) / segments;
+
+                Vector3 d0 = new Vector3(Mathf.Cos(a0), Mathf.Sin(a0), 0f);
+                Vector3 d1 = new Vector3(Mathf.Cos(a1), Mathf.Sin(a1), 0f);
+
+                // Perpendicular to the profile's slope, pointing away from the
+                // axis: the radial part scales with the rise, the axial part
+                // with how fast the radius closes in.
+                Vector3 n0 = (d0 * -deltaZ + new Vector3(0f, 0f, deltaRadius)).normalized;
+                Vector3 n1 = (d1 * -deltaZ + new Vector3(0f, 0f, deltaRadius)).normalized;
+
+                AddQuad(
+                    Ring(center, d0, bottomRadius, bottomZ),
+                    Ring(center, d1, bottomRadius, bottomZ),
+                    Ring(center, d1, topRadius, topZ),
+                    Ring(center, d0, topRadius, topZ),
+                    n0, n1, n1, n0,
+                    bottomColor, bottomColor, topColor, topColor);
+            }
+        }
+
         public void AddDisc(
             Vector2 center,
             float radius,

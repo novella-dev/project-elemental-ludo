@@ -4,6 +4,7 @@ using ElementalLudo.Tokens;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 namespace ElementalLudo.Board
 {
@@ -38,6 +39,9 @@ namespace ElementalLudo.Board
         [SerializeField] private float laneSpacing = 3.4f;
         [SerializeField] private float nodeRadius = 0.85f;
         [SerializeField] private float nodeHeight = 0.45f;
+
+        [Tooltip("How much higher each stage stands than the one before it.")]
+        [SerializeField] private float stageRise = 0.34f;
         [SerializeField] private float linkWidth = 0.16f;
         [SerializeField] private float tokenSize = 1.5f;
 
@@ -113,6 +117,7 @@ namespace ElementalLudo.Board
         private Vector3 walkTo;
         private float walkProgress = 1f;
         private float focusY;
+        private float focusZ;
 
         /// <summary>
         /// Raised with the node the player clicked. The map spots the click
@@ -238,6 +243,17 @@ namespace ElementalLudo.Board
                 mapCamera.orthographic = false;
                 mapCamera.clearFlags = CameraClearFlags.SolidColor;
                 mapCamera.backgroundColor = background;
+
+                // The cel outline is a pipeline effect, not something each
+                // object carries, so a camera that skips post-processing gets
+                // none of it. The arena turns this on and the map did not,
+                // which is most of why the two looked like different games.
+                UniversalAdditionalCameraData cameraData =
+                    mapCamera.GetUniversalAdditionalCameraData();
+                cameraData.renderPostProcessing = true;
+                cameraData.antialiasing =
+                    AntialiasingMode.SubpixelMorphologicalAntiAliasing;
+                cameraData.antialiasingQuality = AntialiasingQuality.High;
             }
 
             mapCamera.fieldOfView = cameraFieldOfView;
@@ -262,13 +278,14 @@ namespace ElementalLudo.Board
                 return;
             }
 
-            float target = NodeLocalPosition(run.Stage, run.Lane).y + cameraLookAhead;
-            focusY = snap
-                ? target
-                : Mathf.Lerp(
-                    focusY,
-                    target,
-                    1f - Mathf.Exp(-cameraFollowSpeed * Time.unscaledDeltaTime));
+            Vector3 here = NodeLocalPosition(run.Stage, run.Lane);
+            float target = here.y + cameraLookAhead;
+            float targetZ = here.z;
+            float blend = snap
+                ? 1f
+                : 1f - Mathf.Exp(-cameraFollowSpeed * Time.unscaledDeltaTime);
+            focusY = Mathf.Lerp(focusY, target, blend);
+            focusZ = Mathf.Lerp(focusZ, targetZ, blend);
 
             // Same rig as the arena: tilting down the -Y axis turns the plane
             // the nodes sit on into ground receding into the distance, which is
@@ -280,7 +297,7 @@ namespace ElementalLudo.Board
                 -Mathf.Cos(radians) * cameraDistance);
             Vector3 up = new Vector3(0f, Mathf.Cos(radians), -Mathf.Sin(radians));
 
-            Vector3 focus = Origin + new Vector3(0f, focusY, 0f);
+            Vector3 focus = Origin + new Vector3(0f, focusY, focusZ);
             mapCamera.transform.position = focus + offset;
             mapCamera.transform.rotation =
                 Quaternion.LookRotation(-offset.normalized, up);
@@ -375,17 +392,65 @@ namespace ElementalLudo.Board
             float halfDepth =
                 (run.Map.StageCount - 1) * 0.5f * stageSpacing + plateMargin;
 
-            // Fractionally below the ground plane, so the links laid on top of
-            // it never fight it for the same pixels.
-            const float depth = 0.01f;
+            // Built one strip per stage rather than as a single slab, so it
+            // climbs with the nodes. A flat plate under a rising path would
+            // leave the far stages hanging over nothing.
+            int strips = run.Map.StageCount;
+            Color far = LudoBoardVisualStyle.Lighten(plateColor, 0.12f);
 
-            builder.AddQuad(
-                new Vector3(-halfWidth, -halfDepth, depth),
-                new Vector3(halfWidth, -halfDepth, depth),
-                new Vector3(halfWidth, halfDepth, depth),
-                new Vector3(-halfWidth, halfDepth, depth),
-                Up, Up, Up, Up,
-                plateColor, plateColor, plateColor, plateColor);
+            for (int stage = 0; stage <= strips; stage++)
+            {
+                float y0 = -halfDepth + (halfDepth * 2f) * stage / (strips + 1);
+                float y1 = -halfDepth + (halfDepth * 2f) * (stage + 1) / (strips + 1);
+                float z0 = PlateHeightAt(y0) + 0.01f;
+                float z1 = PlateHeightAt(y1) + 0.01f;
+
+                // Sloped, so it catches a different lighting band from the
+                // node faces standing on it.
+                Vector3 normal = new Vector3(0f, z1 - z0, y1 - y0).normalized;
+                normal = new Vector3(0f, normal.y, normal.z);
+                if (Vector3.Dot(normal, Up) < 0f)
+                {
+                    normal = -normal;
+                }
+
+                Color near = Color.Lerp(plateColor, far, (float)stage / (strips + 1));
+                Color next = Color.Lerp(plateColor, far, (stage + 1f) / (strips + 1));
+
+                builder.AddQuad(
+                    new Vector3(-halfWidth, y0, z0),
+                    new Vector3(halfWidth, y0, z0),
+                    new Vector3(halfWidth, y1, z1),
+                    new Vector3(-halfWidth, y1, z1),
+                    Up, Up, Up, Up,
+                    near, near, next, next);
+
+                // Side walls, so the path has an edge instead of ending in
+                // nothing where it leaves the frame.
+                Color edge = LudoBoardVisualStyle.Shade(near, 0.4f);
+                float skirt = 0.9f;
+                builder.AddQuad(
+                    new Vector3(-halfWidth, y0, z0),
+                    new Vector3(-halfWidth, y1, z1),
+                    new Vector3(-halfWidth, y1, z1 + skirt),
+                    new Vector3(-halfWidth, y0, z0 + skirt),
+                    Vector3.left, Vector3.left, Vector3.left, Vector3.left,
+                    edge, edge, edge, edge);
+                builder.AddQuad(
+                    new Vector3(halfWidth, y0, z0),
+                    new Vector3(halfWidth, y0, z0 + skirt),
+                    new Vector3(halfWidth, y1, z1 + skirt),
+                    new Vector3(halfWidth, y1, z1),
+                    Vector3.right, Vector3.right, Vector3.right, Vector3.right,
+                    edge, edge, edge, edge);
+            }
+        }
+
+        /// <summary>The plate's height at a depth, matching the stages' climb.</summary>
+        private float PlateHeightAt(float y)
+        {
+            float stage = y / stageSpacing + (run.Map.StageCount - 1) * 0.5f;
+            return -stage * stageRise;
         }
 
         /// <summary>
@@ -420,10 +485,21 @@ namespace ElementalLudo.Board
                     ? nodeRadius * 1.2f
                     : nodeRadius;
 
-            int segments = node.Kind == LudoRunNodeKind.Boss ? 6 : 12;
-            builder.AddCylinder(flat, radius, 0f, -height, segments, side, top);
-            builder.AddDisc(flat, radius, -height, segments, top, Up);
-            BuildNodeMarker(builder, node, flat, radius, -height, live);
+            int segments = node.Kind == LudoRunNodeKind.Boss ? 6 : 14;
+            float groundZ = centre.z;
+            float rimZ = groundZ - height * 0.55f;
+            float topZ = groundZ - height;
+
+            // Wall, then a bevelled shoulder, then the face. The shoulder is
+            // the point: every flat top in this scene lands in the same
+            // lighting band, so without a sloped ring between wall and face
+            // each node reads as a sticker rather than a solid.
+            builder.AddCylinder(flat, radius, groundZ, rimZ, segments, side, side);
+            builder.AddFrustum(
+                flat, radius, radius * 0.82f, rimZ, topZ, segments,
+                LudoBoardVisualStyle.Lighten(side, 0.18f), top);
+            builder.AddDisc(flat, radius * 0.82f, topZ, segments, top, Up);
+            BuildNodeMarker(builder, node, flat, radius * 0.82f, topZ, live);
         }
 
         /// <summary>
@@ -591,12 +667,14 @@ namespace ElementalLudo.Board
 
             float width = walked ? linkWidth * 1.9f : linkWidth;
 
-            // Perpendicular within the ground plane, which is XY here.
-            Vector3 side = new Vector3(-along.y, along.x, 0f) * (width * 0.5f);
+            // Perpendicular to the run of the link but still level across it,
+            // so a ribbon climbing between stages stays flat side to side
+            // rather than twisting.
+            Vector3 side = new Vector3(-along.y, along.x, 0f).normalized * (width * 0.5f);
 
             // Just clear of the ground so it never z-fights the base, and a
             // walked road sits above an unwalked one where they overlap.
-            float lift = walked ? 0.04f : 0.02f;
+            float lift = walked ? 0.06f : 0.03f;
             Vector3 lifted = Up * lift;
 
             builder.AddQuad(
@@ -650,7 +728,14 @@ namespace ElementalLudo.Board
             int laneCount = run.Map.Stage(stage).Count;
             float x = (lane - (laneCount - 1) * 0.5f) * laneSpacing;
             float y = (stage - (run.Map.StageCount - 1) * 0.5f) * stageSpacing;
-            return new Vector3(x, y, 0f);
+
+            // Each stage stands a little higher than the last, so the run reads
+            // as a climb toward the final game rather than a flat chart. It
+            // also breaks the sameness of a scene made almost entirely of
+            // level surfaces, which is what left everything in one lighting
+            // band.
+            float z = -stage * stageRise;
+            return new Vector3(x, y, z);
         }
 
         /// <summary>Where a node sits in the world, for anything positioned by transform.</summary>
