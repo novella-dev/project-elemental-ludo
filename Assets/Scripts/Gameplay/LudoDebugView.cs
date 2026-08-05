@@ -651,8 +651,8 @@ namespace ElementalLudo.Gameplay
         /// </summary>
         private void DrawCombatPanel()
         {
-            const float width = 700f;
-            const float height = 232f;
+            const float width = 760f;
+            const float height = 286f;
 
             LudoCombatSession session = controller.CombatSession;
             LudoCombatReport report = controller.CombatReport;
@@ -791,7 +791,15 @@ namespace ElementalLudo.Gameplay
                 $"{token.TokenId}" + (isActive ? "  ←" : string.Empty),
                 sectionLabelStyle,
                 GUILayout.Width(190f));
+            GUILayout.Label($"{roll.Score}", winnerStyle, GUILayout.Width(70f));
             GUILayout.Label(LudoCombatInfo.Describe(roll), ruleTitleStyle);
+            GUILayout.EndHorizontal();
+
+            // The arithmetic under the total, so nothing about how a score was
+            // reached has to be taken on trust.
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(203f);
+            GUILayout.Label(LudoCombatInfo.Breakdown(roll), hintStyle);
             GUILayout.EndHorizontal();
         }
 

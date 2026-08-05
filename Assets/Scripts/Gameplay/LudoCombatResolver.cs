@@ -27,19 +27,37 @@ namespace ElementalLudo.Gameplay
     {
         public IReadOnlyList<int> Dice { get; }
         public LudoDiceHand Hand { get; }
+
+        /// <summary>The throw plus any flat pips, which is what gets multiplied.</summary>
         public int Pips { get; }
+
         public float Multiplier { get; }
+
+        /// <summary>
+        /// Pips added before the multiplier, kept apart from
+        /// <see cref="Pips"/> so the panel can show the sum of the dice and
+        /// what was added to it as separate steps rather than one total the
+        /// player has to take on trust.
+        /// </summary>
+        public int FlatPips { get; }
 
         /// <summary>Flat elemental edge, already included in the score.</summary>
         public int ElementBonus { get; }
 
         public int Score { get; }
 
+        /// <summary>The dice alone, before anything was added.</summary>
+        public int DiceTotal => Pips - FlatPips;
+
+        /// <summary>The score after multiplying but before the elemental edge.</summary>
+        public int MultipliedScore => Score - ElementBonus;
+
         public LudoCombatRoll(
             IReadOnlyList<int> dice,
             LudoDiceHand hand,
             int pips,
             float multiplier,
+            int flatPips,
             int elementBonus,
             int score)
         {
@@ -47,6 +65,7 @@ namespace ElementalLudo.Gameplay
             Hand = hand;
             Pips = pips;
             Multiplier = multiplier;
+            FlatPips = flatPips;
             ElementBonus = elementBonus;
             Score = score;
         }
@@ -351,6 +370,7 @@ namespace ElementalLudo.Gameplay
                 hand,
                 pips,
                 multiplier,
+                modifiers.FlatPips,
                 modifiers.ElementBonus,
                 Mathf.RoundToInt(pips * multiplier) + modifiers.ElementBonus);
         }

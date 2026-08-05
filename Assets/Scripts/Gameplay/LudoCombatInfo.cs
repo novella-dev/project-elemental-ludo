@@ -36,6 +36,63 @@ namespace ElementalLudo.Gameplay
         }
 
         /// <summary>
+        /// The whole sum, step by step: the faces added up, anything joined to
+        /// them, the multiplier, and the flat bonus after it.
+        ///
+        /// Written out because the order is the rule and it is not guessable
+        /// from a total — pips join before the multiplier and so get multiplied
+        /// with everything else, while the elemental edge lands after and is
+        /// worth the same five points whatever the dice did.
+        /// </summary>
+        public static string Breakdown(LudoCombatRoll roll)
+        {
+            if (roll.Dice == null || roll.Dice.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            System.Text.StringBuilder text = new System.Text.StringBuilder(64);
+
+            for (int index = 0; index < roll.Dice.Count; index++)
+            {
+                if (index > 0)
+                {
+                    text.Append('+');
+                }
+
+                text.Append(roll.Dice[index]);
+            }
+
+            text.Append(" = ").Append(roll.DiceTotal);
+
+            if (roll.FlatPips != 0)
+            {
+                text.Append("   ")
+                    .Append(roll.FlatPips > 0 ? "+" : string.Empty)
+                    .Append(roll.FlatPips)
+                    .Append(" runa = ")
+                    .Append(roll.Pips);
+            }
+
+            text.Append("   ×")
+                .Append(roll.Multiplier.ToString("0.#"))
+                .Append(' ')
+                .Append(HandName(roll.Hand))
+                .Append(" = ")
+                .Append(roll.MultipliedScore);
+
+            if (roll.ElementBonus != 0)
+            {
+                text.Append("   +")
+                    .Append(roll.ElementBonus)
+                    .Append(" elemental = ")
+                    .Append(roll.Score);
+            }
+
+            return text.ToString();
+        }
+
+        /// <summary>
         /// Which side the elemental edge favours and why, or null when neither
         /// has one.
         ///

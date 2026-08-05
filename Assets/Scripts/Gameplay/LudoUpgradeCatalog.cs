@@ -85,6 +85,15 @@ namespace ElementalLudo.Gameplay
             int baseCharges = kind switch
             {
                 LudoUpgradeKind.ExtraDie => 1,
+
+                // Pips join the throw before the multiplier, so a good hand
+                // compounds them — and unlike the elemental edge they apply in
+                // every duel rather than the third of them where the matchup
+                // already favours you. Effective value across three levels is
+                // +28 points against the edge's +8, so it is priced like the
+                // extra die: rare, and earned by levelling.
+                LudoUpgradeKind.FlatPips => 1,
+
                 LudoUpgradeKind.ElementalEdge => 2,
                 LudoUpgradeKind.HandMastery => 2,
                 LudoUpgradeKind.LoadedDice => 2,
