@@ -714,7 +714,11 @@ namespace ElementalLudo.Gameplay
             {
                 DrawCombatScoreLine(defenderToken, defenderRoll, "DEFENSOR", true);
                 GUILayout.Label(
-                    $"Necesita superar {session.ScoreToBeat} para resistir.",
+                    // Reaching the target is enough, not beating it: ties go to
+                    // the defender. Saying "superar" was quietly telling the
+                    // player to reroll a hand that had already won.
+                    $"Con llegar a {session.ScoreToBeat} resiste — los empates " +
+                    "son del defensor.",
                     hintStyle);
             }
 
