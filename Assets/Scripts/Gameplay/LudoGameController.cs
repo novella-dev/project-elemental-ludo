@@ -488,6 +488,13 @@ namespace ElementalLudo.Gameplay
             currentRun = new LudoRunState(
                 element,
                 LudoRunMap.Generate(RunStageCount, UnityEngine.Random.Range(0, int.MaxValue)));
+            // Settled once for the whole run rather than by whichever match
+            // last happened to run. A loose combat never goes through
+            // StartMatch, so without this its duels read elemental rules off a
+            // stale struct and the +5 advantage silently never applied.
+            settings = BuildRunMatchSettings(LudoRunNodeKind.Match);
+            elementalModeEnabled = settings.ElementalRules;
+
             awaitingSetup = false;
             statusMessage = "Comienza la aventura.";
             LogMove($"Nueva run con {LudoElementInfo.DisplayName(element)}.");
@@ -617,6 +624,18 @@ namespace ElementalLudo.Gameplay
             }
 
             runNodeActive = true;
+
+            // Given up here and now, not on the next frame's sync. The arena
+            // takes the screen by asking Camera.main for the board's camera,
+            // and Camera.main only ever answers with an enabled one — so while
+            // the map still held it disabled, the arena found nothing to
+            // suspend and the board came back on top of it. It only looked
+            // right from the second round, once the map had let go.
+            if (runMapView != null)
+            {
+                runMapView.Hide();
+            }
+
             if (node.Kind == LudoRunNodeKind.Duel)
             {
                 StartCoroutine(PlayRunDuel());
@@ -634,8 +653,14 @@ namespace ElementalLudo.Gameplay
         private IEnumerator PlayRunDuel()
         {
             int playerSeat = SeatForElement(currentRun.Element);
-            int rivalSeat = (playerSeat + 1 + UnityEngine.Random.Range(0, players.Count - 1))
-                % players.Count;
+
+            // The rival the map promised, not a fresh roll. Picking one here
+            // would make the elemental matchup shown on the map a lie.
+            int rivalSeat = SeatForElement(currentRun.CurrentNode.RivalElement);
+            if (rivalSeat == playerSeat)
+            {
+                rivalSeat = (playerSeat + 1) % players.Count;
+            }
 
             humanSeatIndex = playerSeat;
             Token playerToken = players[playerSeat].Tokens[0];

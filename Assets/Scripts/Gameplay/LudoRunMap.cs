@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using ElementalLudo.Tokens;
 
 namespace ElementalLudo.Gameplay
 {
@@ -48,6 +49,7 @@ namespace ElementalLudo.Gameplay
 
             List<List<LudoRunNodeKind>> kinds = BuildKinds(total, random);
             List<List<List<int>>> links = BuildLinks(kinds, random);
+            List<List<LudoElement>> rivals = BuildRivals(kinds, random);
 
             List<List<LudoRunNode>> stages = new List<List<LudoRunNode>>(total);
             for (int stage = 0; stage < total; stage++)
@@ -59,7 +61,8 @@ namespace ElementalLudo.Gameplay
                         kinds[stage][lane],
                         stage,
                         lane,
-                        links[stage][lane]));
+                        links[stage][lane],
+                        rivals[stage][lane]));
                 }
 
                 stages.Add(row);
@@ -122,6 +125,46 @@ namespace ElementalLudo.Gameplay
             return roll < 85
                 ? LudoRunNodeKind.Elite
                 : LudoRunNodeKind.Reward;
+        }
+
+        /// <summary>
+        /// Picks who is waiting at each node.
+        ///
+        /// Drawn from the same seeded stream as everything else, so the rivals
+        /// are part of the map rather than rolled when a fight starts — that is
+        /// what lets the map show them, and what makes reading the elemental
+        /// matchups a reason to take one fork over another.
+        ///
+        /// Reward nodes get an element too. It is never used, but leaving a
+        /// hole in the stream would make every later draw depend on how many
+        /// rewards happened to come up.
+        /// </summary>
+        private static List<List<LudoElement>> BuildRivals(
+            List<List<LudoRunNodeKind>> kinds,
+            System.Random random)
+        {
+            LudoElement[] elements =
+            {
+                LudoElement.Fire,
+                LudoElement.Water,
+                LudoElement.Lightning,
+                LudoElement.Plant
+            };
+
+            List<List<LudoElement>> rivals =
+                new List<List<LudoElement>>(kinds.Count);
+            foreach (List<LudoRunNodeKind> row in kinds)
+            {
+                List<LudoElement> line = new List<LudoElement>(row.Count);
+                for (int lane = 0; lane < row.Count; lane++)
+                {
+                    line.Add(elements[random.Next(elements.Length)]);
+                }
+
+                rivals.Add(line);
+            }
+
+            return rivals;
         }
 
         /// <summary>

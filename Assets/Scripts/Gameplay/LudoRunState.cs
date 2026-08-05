@@ -33,6 +33,7 @@ namespace ElementalLudo.Gameplay
     public sealed class LudoRunState
     {
         private readonly List<LudoRunNode> choices = new List<LudoRunNode>(3);
+        private readonly List<LudoRunNode> path = new List<LudoRunNode>(8);
 
         public LudoRunState(LudoElement element, LudoRunMap map)
         {
@@ -42,6 +43,28 @@ namespace ElementalLudo.Gameplay
             Stage = 0;
             Lane = 0;
             Status = LudoRunStatus.AtNode;
+            path.Add(map.Node(0, 0));
+        }
+
+        /// <summary>
+        /// Every node walked, in order, starting with the one the run opened
+        /// on. Kept so the map can draw the road behind the player rather than
+        /// only the choice in front of them.
+        /// </summary>
+        public IReadOnlyList<LudoRunNode> Path => path;
+
+        /// <summary>Whether the step between two nodes has been walked.</summary>
+        public bool HasWalked(LudoRunNode from, LudoRunNode to)
+        {
+            for (int index = 1; index < path.Count; index++)
+            {
+                if (path[index - 1] == from && path[index] == to)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public LudoElement Element { get; }
@@ -130,6 +153,7 @@ namespace ElementalLudo.Gameplay
             Stage = node.Stage;
             Lane = node.Lane;
             Status = LudoRunStatus.AtNode;
+            path.Add(node);
             choices.Clear();
             return true;
         }

@@ -41,6 +41,9 @@ namespace ElementalLudo.Board
         [SerializeField] private float linkWidth = 0.16f;
         [SerializeField] private float tokenSize = 1.5f;
 
+        [Tooltip("Rival tokens shown over duel nodes, relative to the player's own.")]
+        [SerializeField] private float rivalTokenScale = 0.7f;
+
         [Header("Camera")]
         // Framed by working out where the corners project rather than by eye:
         // the outermost nodes land at 72% of the frame, the plate's far edge
@@ -80,6 +83,7 @@ namespace ElementalLudo.Board
         private Transform root;
         private GameObject geometry;
         private GameObject pickers;
+        private GameObject rivalTokens;
         private GameObject tokenObject;
         private Material mapMaterial;
         private Mesh mapMesh;
@@ -301,12 +305,14 @@ namespace ElementalLudo.Board
             }
 
             ClearPickers();
+            ClearRivalTokens();
             for (int stage = 0; stage < run.Map.StageCount; stage++)
             {
                 foreach (LudoRunNode node in run.Map.Stage(stage))
                 {
                     BuildNode(builder, node);
                     BuildPicker(node);
+                    BuildRivalToken(node);
                 }
             }
 
@@ -381,6 +387,71 @@ namespace ElementalLudo.Board
             int segments = node.Kind == LudoRunNodeKind.Boss ? 6 : 12;
             builder.AddCylinder(flat, radius, 0f, -height, segments, side, top);
             builder.AddDisc(flat, radius, -height, segments, top, Up);
+            BuildNodeMarker(builder, node, flat, radius, -height, live);
+        }
+
+        /// <summary>
+        /// What sits on top of a node beyond its disc.
+        ///
+        /// A duel gets the rival's actual token, since it is one opponent and
+        /// knowing which element it is decides whether the fight is worth
+        /// taking. A match or an elite is played against every other seat at
+        /// once, so a single token there would be a lie — those get three pips
+        /// instead, one per rival. The boss gets a ring of spikes.
+        /// </summary>
+        private void BuildNodeMarker(
+            LudoProceduralMesh builder,
+            LudoRunNode node,
+            Vector2 flat,
+            float radius,
+            float topZ,
+            bool live)
+        {
+            Color pip = live
+                ? LudoBoardVisualStyle.Paper
+                : LudoBoardVisualStyle.Shade(LudoBoardVisualStyle.Paper, 0.45f);
+
+            switch (node.Kind)
+            {
+                case LudoRunNodeKind.Match:
+                case LudoRunNodeKind.Elite:
+                {
+                    float spread = radius * 0.45f;
+                    float pipRadius = radius * 0.17f;
+                    for (int index = 0; index < 3; index++)
+                    {
+                        float angle = Mathf.PI * 0.5f + index * Mathf.PI * 2f / 3f;
+                        Vector2 at = flat + new Vector2(
+                            Mathf.Cos(angle) * spread,
+                            Mathf.Sin(angle) * spread);
+                        builder.AddCylinder(
+                            at, pipRadius, topZ, topZ - pipRadius * 1.6f, 8, pip, pip);
+                        builder.AddDisc(
+                            at, pipRadius, topZ - pipRadius * 1.6f, 8, pip, Up);
+                    }
+
+                    break;
+                }
+
+                case LudoRunNodeKind.Boss:
+                {
+                    float spread = radius * 0.62f;
+                    float spikeRadius = radius * 0.14f;
+                    for (int index = 0; index < 5; index++)
+                    {
+                        float angle = Mathf.PI * 0.5f + index * Mathf.PI * 2f / 5f;
+                        Vector2 at = flat + new Vector2(
+                            Mathf.Cos(angle) * spread,
+                            Mathf.Sin(angle) * spread);
+                        float tall = spikeRadius * (index % 2 == 0 ? 4.2f : 2.8f);
+                        builder.AddCylinder(
+                            at, spikeRadius, topZ, topZ - tall, 6, pip, pip);
+                        builder.AddDisc(at, spikeRadius, topZ - tall, 6, pip, Up);
+                    }
+
+                    break;
+                }
+            }
         }
 
         /// <summary>A flat ribbon on the ground joining two nodes.</summary>
@@ -400,17 +471,32 @@ namespace ElementalLudo.Board
 
             along.Normalize();
 
+            // Walked roads keep the player's own colour and run wider, so the
+            // map shows the line taken through it and not just the fork ahead.
+            bool walked = run.HasWalked(from, to);
+            Color colour;
+            if (walked)
+            {
+                colour = PlayerColor();
+            }
+            else if (run.IsCurrent(from) && run.IsChoice(to))
+            {
+                colour = LudoBoardVisualStyle.Paper;
+            }
+            else
+            {
+                colour = LudoBoardVisualStyle.Shade(LudoBoardVisualStyle.SafeCell, 0.35f);
+            }
+
+            float width = walked ? linkWidth * 1.9f : linkWidth;
+
             // Perpendicular within the ground plane, which is XY here.
-            Vector3 side = new Vector3(-along.y, along.x, 0f) * (linkWidth * 0.5f);
+            Vector3 side = new Vector3(-along.y, along.x, 0f) * (width * 0.5f);
 
-            // Just clear of the ground so it never z-fights the base.
-            const float lift = 0.02f;
+            // Just clear of the ground so it never z-fights the base, and a
+            // walked road sits above an unwalked one where they overlap.
+            float lift = walked ? 0.04f : 0.02f;
             Vector3 lifted = Up * lift;
-
-            bool live = run.IsCurrent(from) && run.IsChoice(to);
-            Color colour = live
-                ? LudoBoardVisualStyle.Paper
-                : LudoBoardVisualStyle.Shade(LudoBoardVisualStyle.SafeCell, 0.35f);
 
             builder.AddQuad(
                 a - side + lifted,
@@ -591,6 +677,77 @@ namespace ElementalLudo.Board
         // Token
         // ------------------------------------------------------------------
 
+        private void ClearRivalTokens()
+        {
+            if (rivalTokens == null)
+            {
+                return;
+            }
+
+            Destroy(rivalTokens);
+            rivalTokens = null;
+        }
+
+        /// <summary>
+        /// The opponent's own token, floating over a duel node.
+        ///
+        /// Only duels get one: they are fought against a single rival, so the
+        /// element on show is the one the player will actually face and the
+        /// elemental advantage is readable before committing to a fork. Matches
+        /// and elites are played against every seat at once and get pips
+        /// instead.
+        /// </summary>
+        private void BuildRivalToken(LudoRunNode node)
+        {
+            if (node.Kind != LudoRunNodeKind.Duel)
+            {
+                return;
+            }
+
+            PlayerStyle style = StyleForElement(node.RivalElement);
+            if (style == null || style.TokenModel == null)
+            {
+                return;
+            }
+
+            if (rivalTokens == null)
+            {
+                rivalTokens = new GameObject("RunMapRivals")
+                {
+                    hideFlags = HideFlags.DontSave
+                };
+                rivalTokens.transform.SetParent(root, false);
+                rivalTokens.transform.localPosition = Vector3.zero;
+            }
+
+            GameObject holder = new GameObject($"Rival{node.Stage}_{node.Lane}")
+            {
+                hideFlags = HideFlags.DontSave
+            };
+            holder.transform.SetParent(rivalTokens.transform, false);
+            holder.transform.position =
+                NodeWorldPosition(node.Stage, node.Lane) + Up * (nodeHeight * 2.6f);
+
+            GameObject visualObject = new GameObject("RivalVisual")
+            {
+                hideFlags = HideFlags.DontSave
+            };
+            visualObject.transform.SetParent(holder.transform, false);
+            TokenVisual visual = visualObject.AddComponent<TokenVisual>();
+            visual.SetStyle(style);
+            visual.SetUseElementalModel(true);
+            visualObject.transform.localScale =
+                Vector3.one * (tokenSize * rivalTokenScale);
+
+            // Nothing here is clickable: the node's own picker is what the
+            // player aims at, and a collider up here would shadow it.
+            foreach (Collider modelCollider in
+                     visualObject.GetComponentsInChildren<Collider>(true))
+            {
+                modelCollider.enabled = false;
+            }
+        }
+
         private void EnsureToken()
         {
             if (tokenObject != null)
@@ -639,6 +796,15 @@ namespace ElementalLudo.Board
             {
                 modelCollider.enabled = false;
             }
+        }
+
+        /// <summary>The run element's own colour, for the trail behind the token.</summary>
+        private Color PlayerColor()
+        {
+            PlayerStyle style = StyleForElement(run.Element);
+            return style != null
+                ? LudoBoardVisualStyle.Lighten(style.TokenColor, 0.12f)
+                : LudoBoardVisualStyle.Paper;
         }
 
         private static PlayerStyle StyleForElement(LudoElement element)

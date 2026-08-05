@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using ElementalLudo.Tokens;
 
 namespace ElementalLudo.Gameplay
 {
@@ -42,17 +43,27 @@ namespace ElementalLudo.Gameplay
             LudoRunNodeKind kind,
             int stage,
             int lane,
-            IReadOnlyList<int> nextLanes)
+            IReadOnlyList<int> nextLanes,
+            LudoElement rivalElement)
         {
             Kind = kind;
             Stage = stage;
             Lane = lane;
             NextLanes = nextLanes;
+            RivalElement = rivalElement;
         }
 
         public LudoRunNodeKind Kind { get; }
         public int Stage { get; }
         public int Lane { get; }
+
+        /// <summary>
+        /// Who waits here. Decided when the map is built rather than when the
+        /// fight starts, so the map can show it and the player can weigh the
+        /// elemental matchup before choosing a path — which is the whole point
+        /// of there being a choice.
+        /// </summary>
+        public LudoElement RivalElement { get; }
 
         /// <summary>Lanes in the next stage this one leads to.</summary>
         public IReadOnlyList<int> NextLanes { get; }
