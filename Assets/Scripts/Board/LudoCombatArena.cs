@@ -131,14 +131,9 @@ namespace ElementalLudo.Board
         private GameObject floorObject;
         private GameObject stoneObject;
 
-        // Board camera state, put back exactly as found when the duel ends.
-        private Camera suspendedCamera;
-        private LudoBoardOrbitCamera suspendedOrbit;
-        private Vector3 suspendedPosition;
-        private Quaternion suspendedRotation;
-        private bool suspendedOrthographic;
-        private float suspendedOrthographicSize;
-        private float suspendedFieldOfView;
+        // Board camera, put back exactly as found when the duel ends.
+        private readonly LudoBoardCameraSuspender boardCamera =
+            new LudoBoardCameraSuspender();
 
         private int cameraPreset = DefaultPreset;
         private float viewYaw = Presets[DefaultPreset].Yaw;
@@ -432,7 +427,7 @@ namespace ElementalLudo.Board
                 cameraData.antialiasingQuality = AntialiasingQuality.High;
             }
 
-            SuspendBoardCamera();
+            boardCamera.Suspend(arenaCamera);
             ApplyCameraPose();
             arenaCamera.enabled = true;
         }
@@ -444,75 +439,7 @@ namespace ElementalLudo.Board
                 arenaCamera.enabled = false;
             }
 
-            RestoreBoardCamera();
-        }
-
-        /// <summary>
-        /// Parks the board's camera for the duration of the duel and remembers
-        /// how it was set up.
-        ///
-        /// Turning off the orbit script matters as much as the camera itself:
-        /// it reads the mouse in LateUpdate regardless of whether its camera is
-        /// rendering, so without this every drag, scroll and number key aimed
-        /// at the arena also quietly re-aimed the board behind it — which is
-        /// why the board came back looking wrong.
-        /// </summary>
-        private void SuspendBoardCamera()
-        {
-            if (suspendedCamera != null)
-            {
-                return;
-            }
-
-            Camera boardCamera = Camera.main;
-            if (boardCamera == null || boardCamera == arenaCamera)
-            {
-                return;
-            }
-
-            suspendedCamera = boardCamera;
-            suspendedPosition = boardCamera.transform.position;
-            suspendedRotation = boardCamera.transform.rotation;
-            suspendedOrthographic = boardCamera.orthographic;
-            suspendedOrthographicSize = boardCamera.orthographicSize;
-            suspendedFieldOfView = boardCamera.fieldOfView;
-
-            suspendedOrbit = boardCamera.GetComponent<LudoBoardOrbitCamera>();
-            if (suspendedOrbit != null)
-            {
-                suspendedOrbit.enabled = false;
-            }
-
-            // Two enabled cameras would both render.
-            suspendedCamera.enabled = false;
-        }
-
-        private void RestoreBoardCamera()
-        {
-            if (suspendedCamera == null)
-            {
-                return;
-            }
-
-            // Put the view back before handing control over, so the orbit
-            // script picks up from where the player left the board rather than
-            // from wherever it happened to be.
-            suspendedCamera.transform.SetPositionAndRotation(
-                suspendedPosition,
-                suspendedRotation);
-            suspendedCamera.orthographic = suspendedOrthographic;
-            suspendedCamera.orthographicSize = suspendedOrthographicSize;
-            suspendedCamera.fieldOfView = suspendedFieldOfView;
-            suspendedCamera.ResetProjectionMatrix();
-            suspendedCamera.enabled = true;
-
-            if (suspendedOrbit != null)
-            {
-                suspendedOrbit.enabled = true;
-                suspendedOrbit = null;
-            }
-
-            suspendedCamera = null;
+            boardCamera.Restore();
         }
 
         private void AdvanceViewBlend()
