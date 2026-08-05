@@ -123,6 +123,11 @@ namespace ElementalLudo.Gameplay
             if (controller.IsCombatVisible)
             {
                 DrawCombatPanel();
+
+                // Armed upgrades are spent when a set ends, not per round, so
+                // between rounds of a best-of-three there is still a real
+                // choice to make about what to carry into the next one.
+                DrawUpgradesPanel();
                 return;
             }
 
@@ -399,12 +404,14 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
-            // Under whichever panel is above it: the run's legend is shorter
-            // than a match's controls, so the two screens put it at different
-            // heights rather than leaving a gap on one of them.
-            float top = controller.CurrentRun != null
-                ? PanelMargin + 330f
-                : PanelMargin + 570f;
+            // Under whichever panel is above it, which differs per screen: a
+            // duel has none on the left at all, the run's legend is short, and
+            // a match's controls are tall.
+            float top = PanelMargin;
+            if (!controller.IsCombatVisible)
+            {
+                top += controller.CurrentRun != null ? 330f : 570f;
+            }
 
             GUILayout.BeginArea(
                 new Rect(PanelMargin, top, PanelWidth, UpgradePanelHeight),
@@ -433,8 +440,8 @@ namespace ElementalLudo.Gameplay
 
             GUILayout.BeginHorizontal();
 
-            // Disabled rather than hidden once spent, so the player can still
-            // see what they had and what it did.
+            // Spent ones are dropped from the inventory between fights, so this
+            // only greys out one that ran dry during the duel on screen.
             GUI.enabled = !spent;
             string label = slot.Armed
                 ? $"◆ {LudoUpgradeInfo.DisplayName(upgrade.Kind)}"

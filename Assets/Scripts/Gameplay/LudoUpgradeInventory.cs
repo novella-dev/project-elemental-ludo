@@ -15,6 +15,12 @@ namespace ElementalLudo.Gameplay
         {
             Upgrade = upgrade;
             ChargesLeft = upgrade.Charges;
+
+            // Armed on arrival. Something just won and chose to carry it, so
+            // the useful default is ready — leaving it off meant a player
+            // could collect rewards all run and never notice they had to be
+            // switched on.
+            Armed = true;
         }
 
         public LudoUpgrade Upgrade { get; }
@@ -38,6 +44,39 @@ namespace ElementalLudo.Gameplay
         private readonly List<LudoUpgradeSlot> slots = new List<LudoUpgradeSlot>();
 
         public IReadOnlyList<LudoUpgradeSlot> Slots => slots;
+
+        /// <summary>Whether anything is left that can still be used.</summary>
+        public bool HasUsable
+        {
+            get
+            {
+                foreach (LudoUpgradeSlot slot in slots)
+                {
+                    if (slot.ChargesLeft > 0)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Drops everything spent. Called once a fight is over rather than the
+        /// moment a charge runs out, so an upgrade does not vanish from the
+        /// panel in the middle of the duel it is being used in.
+        /// </summary>
+        public void RemoveSpent()
+        {
+            for (int index = slots.Count - 1; index >= 0; index--)
+            {
+                if (slots[index].ChargesLeft <= 0)
+                {
+                    slots.RemoveAt(index);
+                }
+            }
+        }
 
         public void Grant(LudoUpgrade upgrade)
         {

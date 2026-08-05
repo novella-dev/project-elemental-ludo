@@ -203,7 +203,10 @@ namespace ElementalLudo.Board
             BuildSide(attackerDice, combatSession.Attacker.Dice.Count, attackerRow);
             BuildSide(defenderDice, combatSession.Defender.Dice.Count, -attackerRow);
             BuildCombatants(combatSession, attackerRow);
-            SyncDice(true);
+            // Rolled in, not laid out already thrown: every die starts at zero
+            // and so differs from its face, which sends the whole handful
+            // tumbling the moment the arena opens.
+            SyncDice(false);
             EnterArenaView();
         }
 
@@ -1450,7 +1453,44 @@ namespace ElementalLudo.Board
         private void SyncDice(bool immediate)
         {
             SyncSide(attackerDice, session.Attacker.Dice, session.AttackerToken, immediate);
-            SyncSide(defenderDice, session.Defender.Dice, session.DefenderToken, immediate);
+
+            // The defender's dice are thrown when the session is built, long
+            // before their turn, so showing them during the attacker's would
+            // hand over the very information the duel is built around keeping
+            // back. They stay off the table until it is their throw, and then
+            // tumble in like a real one.
+            bool defenderThrown = session.Phase != LudoCombatPhase.AttackerTurn;
+            SetSideVisible(defenderDice, session.Defender.Dice.Count, defenderThrown);
+            if (defenderThrown)
+            {
+                SyncSide(
+                    defenderDice,
+                    session.Defender.Dice,
+                    session.DefenderToken,
+                    immediate);
+            }
+        }
+
+        private static void SetSideVisible(
+            List<ArenaDie> dice,
+            int count,
+            bool visible)
+        {
+            for (int index = 0; index < dice.Count; index++)
+            {
+                bool shown = visible && index < count;
+                if (dice[index].Root.gameObject.activeSelf != shown)
+                {
+                    dice[index].Root.gameObject.SetActive(shown);
+                }
+
+                // Held at nothing while hidden so the first sync after they
+                // appear counts as a change and sends them rolling.
+                if (!shown)
+                {
+                    dice[index].Value = 0;
+                }
+            }
         }
 
         private void SyncSide(

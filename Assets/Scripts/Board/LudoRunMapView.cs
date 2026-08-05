@@ -38,10 +38,16 @@ namespace ElementalLudo.Board
         [SerializeField] private float stageSpacing = 3.6f;
         [SerializeField] private float laneSpacing = 3.4f;
         [SerializeField] private float nodeRadius = 0.85f;
-        [SerializeField] private float nodeHeight = 0.45f;
+
+        // Sized against the screen, not by eye. At this camera the map covers
+        // about 21 units for 1080 pixels, and heights are foreshortened by the
+        // tilt on top of that — so the first pass at 0.45 came out sixteen
+        // pixels tall with a seven-pixel bevel, which is why correct geometry
+        // still looked like nothing had changed.
+        [SerializeField] private float nodeHeight = 1.1f;
 
         [Tooltip("How much higher each stage stands than the one before it.")]
-        [SerializeField] private float stageRise = 0.34f;
+        [SerializeField] private float stageRise = 0.85f;
         [SerializeField] private float linkWidth = 0.16f;
         [SerializeField] private float tokenSize = 1.5f;
 
@@ -487,7 +493,7 @@ namespace ElementalLudo.Board
 
             int segments = node.Kind == LudoRunNodeKind.Boss ? 6 : 14;
             float groundZ = centre.z;
-            float rimZ = groundZ - height * 0.55f;
+            float rimZ = groundZ - height * 0.4f;
             float topZ = groundZ - height;
 
             // Wall, then a bevelled shoulder, then the face. The shoulder is

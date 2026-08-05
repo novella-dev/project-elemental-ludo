@@ -217,11 +217,29 @@ namespace ElementalLudo.Gameplay
         /// The running score of a loose combat, or null when the duel on screen
         /// is a board capture rather than a best-of-three.
         /// </summary>
-        public string RunDuelScoreline =>
-            runNodeActive && currentRun != null &&
-            currentRun.CurrentNode.Kind == LudoRunNodeKind.Duel
-                ? $"COMBATE AL MEJOR DE 3  ·  {runDuelPlayerWins}-{runDuelRivalWins}"
-                : null;
+        public string RunDuelScoreline
+        {
+            get
+            {
+                if (!runNodeActive || currentRun == null)
+                {
+                    return null;
+                }
+
+                LudoRunNodeKind kind = currentRun.CurrentNode.Kind;
+                if (kind != LudoRunNodeKind.Duel && kind != LudoRunNodeKind.Elite)
+                {
+                    return null;
+                }
+
+                // Read off the rounds actually needed rather than written out,
+                // so an elite cannot claim to be best of three.
+                int rounds = runNodeWinsNeeded * 2 - 1;
+                string title = kind == LudoRunNodeKind.Elite ? "ÉLITE" : "COMBATE";
+                return $"{title} AL MEJOR DE {rounds}  ·  " +
+                       $"{runDuelPlayerWins}-{runDuelRivalWins}";
+            }
+        }
 
         public bool IsInitialized => initialized;
         public bool IsDiceRolling => dice != null && dice.IsRolling;
@@ -711,12 +729,23 @@ namespace ElementalLudo.Gameplay
             runDuelPlayerWins = 0;
             runDuelRivalWins = 0;
 
+            // An elite takes on every other seat rather than one, ordered so
+            // the favourable matchup comes first and the worst is left for
+            // when the fight is already decided or desperate.
+            List<int> rotation = currentRun.CurrentNode.Kind == LudoRunNodeKind.Elite
+                ? BuildEliteRotation(playerSeat)
+                : new List<int> { rivalSeat };
+            int round = 0;
+
             // Best of three. A single throw hangs the whole node on one roll,
             // and with ties going to the defender that made a loose combat
             // swingier than a capture on the board ever is.
             while (runDuelPlayerWins < runNodeWinsNeeded &&
                    runDuelRivalWins < runNodeWinsNeeded)
             {
+                rivalToken = players[rotation[round % rotation.Count]].Tokens[0];
+                round++;
+
                 // The player attacks, so they throw first and the rival answers
                 // knowing the score — the same shape as a capture on the board.
                 // Charges are held back until the set is over.
@@ -737,6 +766,7 @@ namespace ElementalLudo.Gameplay
             }
 
             ActiveUpgrades.ConsumeArmedDuelUpgrades();
+            ActiveUpgrades.RemoveSpent();
 
             bool won = runDuelPlayerWins >= runNodeWinsNeeded;
             LogMove(won
@@ -775,6 +805,17 @@ namespace ElementalLudo.Gameplay
             if (currentRun.Status == LudoRunStatus.Lost)
             {
                 statusMessage = "La run termina aquí.";
+                LogMove(statusMessage);
+                return;
+            }
+
+            // Only a win pays. Losing a duel still lets the run continue, since
+            // it costs a life rather than ending it — but continuing is not the
+            // same as being rewarded for it.
+            if (!won)
+            {
+                statusMessage =
+                    $"Pierdes el combate. Te quedan {currentRun.Lives} vida(s).";
                 LogMove(statusMessage);
                 return;
             }
@@ -883,6 +924,43 @@ namespace ElementalLudo.Gameplay
                     $"Llegas con {currentRun.Lives} fichas: perdiste " +
                     $"{missing} por el camino.");
             }
+        }
+
+        /// <summary>
+        /// The other three seats, best matchup first.
+        ///
+        /// An elite is the one fight where the player faces everyone, so the
+        /// order is the whole shape of it: open against the element you beat,
+        /// and only meet the one that beats you once the set is already won or
+        /// nearly lost.
+        /// </summary>
+        private List<int> BuildEliteRotation(int playerSeat)
+        {
+            LudoElement own = players[playerSeat].Element;
+            List<int> seats = new List<int>(3);
+            for (int index = 0; index < players.Count; index++)
+            {
+                if (index != playerSeat)
+                {
+                    seats.Add(index);
+                }
+            }
+
+            seats.Sort((left, right) =>
+                MatchupRank(own, players[left].Element)
+                    .CompareTo(MatchupRank(own, players[right].Element)));
+            return seats;
+        }
+
+        /// <summary>Lower is better for the player: 0 favours them, 2 favours the rival.</summary>
+        private static int MatchupRank(LudoElement own, LudoElement rival)
+        {
+            if (LudoCombatResolver.Beats(own, rival))
+            {
+                return 0;
+            }
+
+            return LudoCombatResolver.Beats(rival, own) ? 2 : 1;
         }
 
         /// <summary>The seat holding a given element, or the first one.</summary>
