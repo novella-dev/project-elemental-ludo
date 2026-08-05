@@ -99,26 +99,40 @@ namespace ElementalLudo.Gameplay
                 return null;
             }
 
-            LudoRunMap map = LudoRunMap.Generate(data.stageCount, data.mapSeed, data.element);
-
-            LudoRunState run = LudoRunState.Restore(
-                data.element,
-                map,
-                data.stage,
-                data.lane,
-                data.lives,
-                data.refreshesLeft,
-                data.path);
-
-            foreach (LudoRunUpgradeSaveData upgrade in data.upgrades)
+            // Regenerating the map and replaying the saved path both index
+            // straight into it, so a save left over from a build where the
+            // map generator or stage count has since changed can walk off
+            // the end of a stage. That is exactly the kind of "foreign save"
+            // this method promises never to crash on, so it gets the same
+            // catch-and-fail-quiet treatment as the JSON parse above.
+            try
             {
-                run.Upgrades.RestoreSlot(
-                    new LudoUpgrade(upgrade.kind, upgrade.level, upgrade.targetHand),
-                    upgrade.chargesLeft,
-                    upgrade.armed);
-            }
+                LudoRunMap map = LudoRunMap.Generate(data.stageCount, data.mapSeed, data.element);
 
-            return run;
+                LudoRunState run = LudoRunState.Restore(
+                    data.element,
+                    map,
+                    data.stage,
+                    data.lane,
+                    data.lives,
+                    data.refreshesLeft,
+                    data.path);
+
+                foreach (LudoRunUpgradeSaveData upgrade in data.upgrades)
+                {
+                    run.Upgrades.RestoreSlot(
+                        new LudoUpgrade(upgrade.kind, upgrade.level, upgrade.targetHand),
+                        upgrade.chargesLeft,
+                        upgrade.armed);
+                }
+
+                return run;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"No se pudo reconstruir la partida guardada: {exception.Message}");
+                return null;
+            }
         }
 
         public static void SaveProgress(LudoElementProgress progress)

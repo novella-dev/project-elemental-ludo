@@ -515,6 +515,12 @@ namespace ElementalLudo.Gameplay
 
             AbandonRun();
 
+            // A save left over from whatever run was in progress belongs to
+            // that run, not this new one. Without this, closing the game
+            // before the new run's first autosave checkpoint would resurrect
+            // the abandoned run instead of the one just started.
+            LudoSaveService.DeleteRun();
+
             currentRun = new LudoRunState(
                 element,
                 LudoRunMap.Generate(
