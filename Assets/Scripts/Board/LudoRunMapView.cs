@@ -42,12 +42,28 @@ namespace ElementalLudo.Board
         [SerializeField] private float tokenSize = 1.5f;
 
         [Header("Camera")]
+        // Framed by working out where the corners project rather than by eye:
+        // the outermost nodes land at 72% of the frame, the plate's far edge
+        // stays inside it, and its near edge falls just off the bottom, so the
+        // ground runs off screen the way ground should instead of ending in a
+        // visible ledge.
         [Range(0f, 80f)]
         [SerializeField] private float cameraTilt = 46f;
-        [SerializeField] private float cameraDistance = 26f;
+        [SerializeField] private float cameraDistance = 29f;
         [SerializeField] private float cameraFieldOfView = 40f;
+        // Dark, with the nodes standing on a mid-toned plate rather than
+        // straight against it. Read as luminance, the node palette spans from
+        // the boss at 0.13 to a reward at 0.79, so no single backdrop can
+        // contrast with all of them — the plate at 0.35 sits in the middle and
+        // gives every node an edge in one direction or the other.
         [SerializeField] private Color background =
-            LudoBoardVisualStyle.Lighten(LudoBoardVisualStyle.SafeCell, 0.34f);
+            LudoBoardVisualStyle.Shade(LudoBoardVisualStyle.SafeCell, 0.80f);
+
+        [SerializeField] private Color plateColor =
+            LudoBoardVisualStyle.Shade(LudoBoardVisualStyle.SafeCell, 0.52f);
+
+        [Tooltip("How far the plate reaches past the outermost nodes.")]
+        [SerializeField] private float plateMargin = 2.2f;
 
         [Header("Walk")]
         [Min(0.05f)]
@@ -139,7 +155,7 @@ namespace ElementalLudo.Board
             }
 
             walkFrom = tokenObject.transform.position;
-            walkTo = NodePosition(target.Stage, target.Lane) + Up * nodeHeight;
+            walkTo = NodeWorldPosition(target.Stage, target.Lane) + Up * nodeHeight;
             walkProgress = 0f;
         }
 
@@ -271,6 +287,8 @@ namespace ElementalLudo.Board
         {
             LudoProceduralMesh builder = new LudoProceduralMesh();
 
+            BuildPlate(builder);
+
             for (int stage = 0; stage < run.Map.StageCount - 1; stage++)
             {
                 foreach (LudoRunNode node in run.Map.Stage(stage))
@@ -299,13 +317,43 @@ namespace ElementalLudo.Board
         }
 
         /// <summary>
+        /// The ground the map sits on, sized from the map itself so a longer
+        /// run or a wider stage still lands on it. Without this the nodes float
+        /// against the backdrop and no single backdrop colour can suit them all.
+        /// </summary>
+        private void BuildPlate(LudoProceduralMesh builder)
+        {
+            float widest = 0f;
+            for (int stage = 0; stage < run.Map.StageCount; stage++)
+            {
+                widest = Mathf.Max(widest, run.Map.Stage(stage).Count);
+            }
+
+            float halfWidth = (widest - 1) * 0.5f * laneSpacing + plateMargin;
+            float halfDepth =
+                (run.Map.StageCount - 1) * 0.5f * stageSpacing + plateMargin;
+
+            // Fractionally below the ground plane, so the links laid on top of
+            // it never fight it for the same pixels.
+            const float depth = 0.01f;
+
+            builder.AddQuad(
+                new Vector3(-halfWidth, -halfDepth, depth),
+                new Vector3(halfWidth, -halfDepth, depth),
+                new Vector3(halfWidth, halfDepth, depth),
+                new Vector3(-halfWidth, halfDepth, depth),
+                Up, Up, Up, Up,
+                plateColor, plateColor, plateColor, plateColor);
+        }
+
+        /// <summary>
         /// A node as a low disc. Reachable ones stand taller and keep their
         /// full colour; everything else is dimmed but still drawn, so the shape
         /// of the run ahead stays readable.
         /// </summary>
         private void BuildNode(LudoProceduralMesh builder, LudoRunNode node)
         {
-            Vector3 centre = NodePosition(node.Stage, node.Lane);
+            Vector3 centre = NodeLocalPosition(node.Stage, node.Lane);
             Vector2 flat = new Vector2(centre.x, centre.y);
 
             bool current = run.IsCurrent(node);
@@ -341,8 +389,8 @@ namespace ElementalLudo.Board
             LudoRunNode from,
             LudoRunNode to)
         {
-            Vector3 a = NodePosition(from.Stage, from.Lane);
-            Vector3 b = NodePosition(to.Stage, to.Lane);
+            Vector3 a = NodeLocalPosition(from.Stage, from.Lane);
+            Vector3 b = NodeLocalPosition(to.Stage, to.Lane);
 
             Vector3 along = b - a;
             if (along.sqrMagnitude <= Mathf.Epsilon)
@@ -373,30 +421,53 @@ namespace ElementalLudo.Board
                 colour, colour, colour, colour);
         }
 
+        /// <summary>
+        /// Node colours, checked against the plate they sit on rather than
+        /// picked by eye. Pure red reads far darker than it looks — luminance
+        /// weights green most — so an unlightened elite came out at 0.27
+        /// against a 0.35 plate and would have all but vanished. The boss goes
+        /// the other way instead of the same way as the elite, both to clear
+        /// the plate downward and to tell the two apart.
+        /// </summary>
         private static Color NodeColor(LudoRunNodeKind kind)
         {
             return kind switch
             {
                 LudoRunNodeKind.Reward => LudoBoardVisualStyle.Yellow,
-                LudoRunNodeKind.Duel => LudoBoardVisualStyle.Blue,
+                LudoRunNodeKind.Duel =>
+                    LudoBoardVisualStyle.Lighten(LudoBoardVisualStyle.Blue, 0.15f),
                 LudoRunNodeKind.Match => LudoBoardVisualStyle.SandMid,
-                LudoRunNodeKind.Elite => LudoBoardVisualStyle.Red,
+                LudoRunNodeKind.Elite =>
+                    LudoBoardVisualStyle.Lighten(LudoBoardVisualStyle.Red, 0.38f),
                 LudoRunNodeKind.Boss =>
-                    LudoBoardVisualStyle.Shade(LudoBoardVisualStyle.Red, 0.35f),
+                    LudoBoardVisualStyle.Shade(LudoBoardVisualStyle.Red, 0.55f),
                 _ => LudoBoardVisualStyle.SafeCell
             };
         }
 
         /// <summary>
-        /// Where a node sits. Stages run away from the camera and lanes across,
-        /// centred on the origin so the whole map is framed by one fixed shot.
+        /// Where a node sits relative to the map's own root. Stages run away
+        /// from the camera and lanes across, centred so the whole map is framed
+        /// by one fixed shot.
+        ///
+        /// Local, not world, and the distinction matters: mesh vertices are
+        /// drawn by an object already parented to the root, so folding the
+        /// origin in here too would place the geometry twice as far out as the
+        /// camera looking at it — invisible, while transform-positioned things
+        /// like the token still landed correctly.
         /// </summary>
-        private Vector3 NodePosition(int stage, int lane)
+        private Vector3 NodeLocalPosition(int stage, int lane)
         {
             int laneCount = run.Map.Stage(stage).Count;
             float x = (lane - (laneCount - 1) * 0.5f) * laneSpacing;
             float y = (stage - (run.Map.StageCount - 1) * 0.5f) * stageSpacing;
-            return Origin + new Vector3(x, y, 0f);
+            return new Vector3(x, y, 0f);
+        }
+
+        /// <summary>Where a node sits in the world, for anything positioned by transform.</summary>
+        private Vector3 NodeWorldPosition(int stage, int lane)
+        {
+            return Origin + NodeLocalPosition(stage, lane);
         }
 
         private void EnsureGeometryObject()
@@ -473,7 +544,7 @@ namespace ElementalLudo.Board
                 hideFlags = HideFlags.DontSave
             };
             picker.transform.SetParent(pickers.transform, false);
-            picker.transform.position = NodePosition(node.Stage, node.Lane);
+            picker.transform.position = NodeWorldPosition(node.Stage, node.Lane);
 
             SphereCollider collider = picker.AddComponent<SphereCollider>();
             collider.radius = nodeRadius * 1.15f;
@@ -524,8 +595,16 @@ namespace ElementalLudo.Board
         {
             if (tokenObject != null)
             {
-                tokenObject.transform.position =
-                    NodePosition(run.Stage, run.Lane) + Up * nodeHeight;
+                // Left alone mid-walk. Show runs every frame, and the run's
+                // stage does not move until the token arrives, so snapping it
+                // here would drag the piece back to where it set off from on
+                // every frame of its own journey.
+                if (!IsWalking)
+                {
+                    tokenObject.transform.position =
+                        NodeWorldPosition(run.Stage, run.Lane) + Up * nodeHeight;
+                }
+
                 return;
             }
 
@@ -541,7 +620,7 @@ namespace ElementalLudo.Board
             };
             tokenObject.transform.SetParent(root, false);
             tokenObject.transform.position =
-                NodePosition(run.Stage, run.Lane) + Up * nodeHeight;
+                NodeWorldPosition(run.Stage, run.Lane) + Up * nodeHeight;
 
             // Through TokenVisual, like the arena does, so the piece on the map
             // is the same cartoon-shaded token the player moves on the board.
