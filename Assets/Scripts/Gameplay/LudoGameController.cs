@@ -126,6 +126,11 @@ namespace ElementalLudo.Gameplay
         /// <summary>Rounds taken so far in a loose combat, which is best of three.</summary>
         private int runDuelPlayerWins;
         private int runDuelRivalWins;
+
+        /// <summary>True while the token is travelling between map nodes.</summary>
+        private bool runWalking;
+
+        private LudoRunMapView runMapView;
         private bool combatTurnConfirmed;
         private int activePlayerIndex;
         private int rolledValue;
@@ -383,6 +388,11 @@ namespace ElementalLudo.Gameplay
             SubscribePlayerControllers();
         }
 
+        private void Update()
+        {
+            SyncRunMapView();
+        }
+
         private void Start()
         {
             initialized = TryBuildPlayers();
@@ -489,24 +499,107 @@ namespace ElementalLudo.Gameplay
         {
             currentRun = null;
             runNodeActive = false;
+            runWalking = false;
             rewardOffer.Clear();
+            if (runMapView != null)
+            {
+                runMapView.Hide();
+            }
         }
 
-        /// <summary>Walks to one of the nodes the map is offering.</summary>
+        /// <summary>
+        /// Keeps the 3D map on screen exactly while the run is between fights,
+        /// and out of the way otherwise. Driven from Update rather than by each
+        /// transition, so no path through the run can leave it stranded.
+        /// </summary>
+        private void SyncRunMapView()
+        {
+            if (currentRun == null)
+            {
+                return;
+            }
+
+            EnsureRunMapView();
+            if (IsRunMapVisible)
+            {
+                runMapView.Show(currentRun);
+            }
+            else
+            {
+                runMapView.Hide();
+            }
+        }
+
+        private void EnsureRunMapView()
+        {
+            if (runMapView != null)
+            {
+                return;
+            }
+
+            runMapView = FindFirstObjectByType<LudoRunMapView>();
+            if (runMapView == null)
+            {
+                GameObject viewObject = new GameObject("RunMapView")
+                {
+                    hideFlags = HideFlags.DontSave
+                };
+                viewObject.transform.SetParent(transform, false);
+                runMapView = viewObject.AddComponent<LudoRunMapView>();
+            }
+
+            // Re-pointed every time, the same reason the arena's reroll hook is:
+            // a delegate lost to a domain reload would leave the map looking
+            // clickable but inert.
+            runMapView.NodeClicked = node => TryEnterNode(node);
+        }
+
+        /// <summary>The node the pointer is over on the map, or null.</summary>
+        public LudoRunNode HoveredRunNode =>
+            runMapView != null ? runMapView.HoveredNode : null;
+
+        /// <summary>
+        /// Walks to one of the nodes the map is offering. The token travels
+        /// there first and the node only opens once it arrives, so the move is
+        /// something the player watches rather than a cut they miss.
+        /// </summary>
         public bool TryEnterNode(LudoRunNode node)
         {
-            if (currentRun == null || runNodeActive || IsRewardPending)
+            if (currentRun == null || runNodeActive || runWalking || IsRewardPending)
             {
                 return false;
             }
 
-            if (!currentRun.TryMoveTo(node))
+            if (node == null || !currentRun.IsChoice(node))
             {
                 return false;
+            }
+
+            StartCoroutine(WalkToNode(node));
+            return true;
+        }
+
+        private IEnumerator WalkToNode(LudoRunNode node)
+        {
+            runWalking = true;
+
+            if (runMapView != null)
+            {
+                runMapView.BeginWalk(node);
+                yield return new WaitUntil(() => !runMapView.IsWalking);
+            }
+
+            runWalking = false;
+
+            // Checked again on arrival rather than trusted from before the
+            // walk: a coroutine can outlive the run that started it if the
+            // player leaves for the menu mid-step.
+            if (currentRun == null || !currentRun.TryMoveTo(node))
+            {
+                yield break;
             }
 
             EnterCurrentRunNode();
-            return true;
         }
 
         /// <summary>

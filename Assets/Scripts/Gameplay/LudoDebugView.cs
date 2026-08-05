@@ -184,12 +184,15 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
-            const float width = 720f;
-            const float height = 470f;
+            // The map itself is drawn in 3D and clicked there; this is the
+            // legend beside it. Putting the node list back here as buttons
+            // would give the player two places to click for the same thing.
+            const float width = 340f;
+            const float height = 250f;
             GUILayout.BeginArea(
                 new Rect(
-                    (Screen.width - width) * 0.5f,
-                    (Screen.height - height) * 0.5f,
+                    PanelMargin,
+                    PanelMargin,
                     width,
                     height),
                 panelStyle);
@@ -208,62 +211,76 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
-            for (int stage = 0; stage < run.Map.StageCount; stage++)
+            // Named on hover, since a coloured disc alone cannot say what it is.
+            LudoRunNode hovered = controller.HoveredRunNode;
+            if (hovered != null)
             {
-                DrawRunStage(run, stage);
+                GUILayout.Label(LudoRunInfo.NodeName(hovered.Kind), sectionLabelStyle);
+                GUILayout.Label(LudoRunInfo.NodeSummary(hovered.Kind), hintStyle);
+            }
+            else
+            {
+                GUILayout.Label(
+                    run.Status == LudoRunStatus.Choosing
+                        ? "Pasa el ratón por un nodo iluminado y haz clic."
+                        : LudoRunInfo.NodeName(run.CurrentNode.Kind),
+                    hintStyle);
+            }
+
+            GUILayout.Space(8f);
+            DrawRunLegend();
+
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("Abandonar", endMatchButtonStyle))
+            {
+                controller.ReturnToMenu();
             }
 
             GUILayout.EndArea();
         }
 
-        private void DrawRunStage(LudoRunState run, int stage)
+        /// <summary>Which colour on the map means what.</summary>
+        private void DrawRunLegend()
         {
-            IReadOnlyList<LudoRunNode> nodes = run.Map.Stage(stage);
-
-            GUILayout.BeginHorizontal();
-            GUILayout.Label($"{stage + 1}", hintStyle, GUILayout.Width(18f));
-
-            foreach (LudoRunNode node in nodes)
+            foreach (LudoRunNodeKind kind in RunNodeKinds)
             {
-                bool here = run.IsCurrent(node);
-                bool reachable = run.IsChoice(node);
-
-                string label = here
-                    ? $"◆ {LudoRunInfo.NodeName(node.Kind)}"
-                    : LudoRunInfo.NodeName(node.Kind);
-
-                // Only the offered nodes respond; the rest are there to be read.
-                GUI.enabled = reachable;
-                if (GUILayout.Button(
-                        label,
-                        here || reachable ? toggleOnStyle : toggleOffStyle,
-                        GUILayout.Width(150f)))
-                {
-                    controller.TryEnterNode(node);
-                }
-
-                GUI.enabled = true;
+                GUILayout.BeginHorizontal();
+                GUILayout.Box(
+                    string.Empty,
+                    MakeAccentStyle(RunNodeLegendColor(kind)),
+                    GUILayout.Width(10f),
+                    GUILayout.Height(14f));
+                GUILayout.Space(6f);
+                GUILayout.Label(LudoRunInfo.NodeName(kind), hintStyle);
+                GUILayout.EndHorizontal();
             }
+        }
 
-            GUILayout.EndHorizontal();
+        private static readonly LudoRunNodeKind[] RunNodeKinds =
+        {
+            LudoRunNodeKind.Reward,
+            LudoRunNodeKind.Duel,
+            LudoRunNodeKind.Match,
+            LudoRunNodeKind.Elite,
+            LudoRunNodeKind.Boss
+        };
 
-            // The summary follows the row it belongs to rather than crowding
-            // each button, which would not fit three across.
-            if (stage == run.Stage + 1 || (stage == run.Stage && run.Choices.Count == 0))
+        /// <summary>
+        /// Mirrors the map's own colours. Kept here rather than reached for
+        /// across namespaces, since the legend only needs the swatch and the
+        /// view has no business depending on Board.
+        /// </summary>
+        private static Color RunNodeLegendColor(LudoRunNodeKind kind)
+        {
+            return kind switch
             {
-                foreach (LudoRunNode node in nodes)
-                {
-                    if (run.IsChoice(node) || run.IsCurrent(node))
-                    {
-                        GUILayout.Label(
-                            $"· {LudoRunInfo.NodeName(node.Kind)}: " +
-                            LudoRunInfo.NodeSummary(node.Kind),
-                            hintStyle);
-                    }
-                }
-            }
-
-            GUILayout.Space(4f);
+                LudoRunNodeKind.Reward => new Color(1f, 0.80f, 0.08f),
+                LudoRunNodeKind.Duel => new Color(0.02f, 0.52f, 0.96f),
+                LudoRunNodeKind.Match => new Color(0.91f, 0.72f, 0.39f),
+                LudoRunNodeKind.Elite => new Color(0.95f, 0.075f, 0.20f),
+                LudoRunNodeKind.Boss => new Color(0.62f, 0.05f, 0.14f),
+                _ => Color.white
+            };
         }
 
         private void DrawRunEnding(LudoRunState run)
