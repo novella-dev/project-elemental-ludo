@@ -54,6 +54,11 @@ namespace ElementalLudo.Board
         [SerializeField] private float cameraTilt = 46f;
         [SerializeField] private float cameraDistance = 29f;
         [SerializeField] private float cameraFieldOfView = 40f;
+
+        [Tooltip("How far ahead of the player the camera looks, in world units.")]
+        [SerializeField] private float cameraLookAhead = 5.5f;
+        [Min(0.5f)]
+        [SerializeField] private float cameraFollowSpeed = 4f;
         // Dark, with the nodes standing on a mid-toned plate rather than
         // straight against it. Read as luminance, the node palette spans from
         // the boss at 0.13 to a reward at 0.79, so no single backdrop can
@@ -78,6 +83,12 @@ namespace ElementalLudo.Board
         private readonly Dictionary<Collider, LudoRunNode> nodePickers =
             new Dictionary<Collider, LudoRunNode>(24);
 
+        // Reused so hovering costs no allocation per frame.
+        private readonly RaycastHit[] rayHits = new RaycastHit[16];
+
+        /// <summary>Which map the colliders and rival tokens were built for.</summary>
+        private LudoRunMap builtMap;
+
         private LudoRunState run;
         private Camera mapCamera;
         private Transform root;
@@ -101,6 +112,7 @@ namespace ElementalLudo.Board
         private Vector3 walkFrom;
         private Vector3 walkTo;
         private float walkProgress = 1f;
+        private float focusY;
 
         /// <summary>
         /// Raised with the node the player clicked. The map spots the click
@@ -125,6 +137,7 @@ namespace ElementalLudo.Board
             run = runState;
             EnsureRoot();
             root.gameObject.SetActive(true);
+            EnsureNodeObjects();
             RebuildIfChanged();
             EnsureToken();
             EnterMapView();
@@ -171,6 +184,7 @@ namespace ElementalLudo.Board
             }
 
             AdvanceWalk();
+            UpdateCameraPose(false);
 
             // Rebuilt only on a real change, so standing on the map costs
             // nothing per frame.
@@ -227,6 +241,34 @@ namespace ElementalLudo.Board
             }
 
             mapCamera.fieldOfView = cameraFieldOfView;
+            UpdateCameraPose(true);
+            mapCamera.enabled = true;
+
+            boardCamera.Suspend(mapCamera);
+        }
+
+        /// <summary>
+        /// Keeps the camera over the player rather than over the whole map.
+        ///
+        /// Twelve stages are more than twice what one fixed shot can hold, so
+        /// it follows instead, biased forward so more of the road ahead is
+        /// visible than the road already walked — what is behind has already
+        /// been decided.
+        /// </summary>
+        private void UpdateCameraPose(bool snap)
+        {
+            if (mapCamera == null || run == null)
+            {
+                return;
+            }
+
+            float target = NodeLocalPosition(run.Stage, run.Lane).y + cameraLookAhead;
+            focusY = snap
+                ? target
+                : Mathf.Lerp(
+                    focusY,
+                    target,
+                    1f - Mathf.Exp(-cameraFollowSpeed * Time.unscaledDeltaTime));
 
             // Same rig as the arena: tilting down the -Y axis turns the plane
             // the nodes sit on into ground receding into the distance, which is
@@ -238,12 +280,10 @@ namespace ElementalLudo.Board
                 -Mathf.Cos(radians) * cameraDistance);
             Vector3 up = new Vector3(0f, Mathf.Cos(radians), -Mathf.Sin(radians));
 
-            mapCamera.transform.position = Origin + offset;
+            Vector3 focus = Origin + new Vector3(0f, focusY, 0f);
+            mapCamera.transform.position = focus + offset;
             mapCamera.transform.rotation =
                 Quaternion.LookRotation(-offset.normalized, up);
-            mapCamera.enabled = true;
-
-            boardCamera.Suspend(mapCamera);
         }
 
         private void EnsureRoot()
@@ -304,15 +344,11 @@ namespace ElementalLudo.Board
                 }
             }
 
-            ClearPickers();
-            ClearRivalTokens();
             for (int stage = 0; stage < run.Map.StageCount; stage++)
             {
                 foreach (LudoRunNode node in run.Map.Stage(stage))
                 {
                     BuildNode(builder, node);
-                    BuildPicker(node);
-                    BuildRivalToken(node);
                 }
             }
 
@@ -413,6 +449,22 @@ namespace ElementalLudo.Board
 
             switch (node.Kind)
             {
+                case LudoRunNodeKind.Heal:
+                {
+                    // A plus sign, built as two crossed bars so it reads as a
+                    // health cross at any angle the camera happens to be at.
+                    float arm = radius * 0.62f;
+                    float thick = radius * 0.2f;
+                    float lift = topZ - thick;
+                    Color cross = live
+                        ? LudoBoardVisualStyle.Paper
+                        : LudoBoardVisualStyle.Shade(LudoBoardVisualStyle.Paper, 0.45f);
+
+                    AddBar(builder, flat, arm, thick, topZ, lift, cross, true);
+                    AddBar(builder, flat, arm, thick, topZ, lift, cross, false);
+                    break;
+                }
+
                 case LudoRunNodeKind.Match:
                 case LudoRunNodeKind.Elite:
                 {
@@ -452,6 +504,55 @@ namespace ElementalLudo.Board
                     break;
                 }
             }
+        }
+
+        /// <summary>One bar of the heal cross, raised off the node's top face.</summary>
+        private static void AddBar(
+            LudoProceduralMesh builder,
+            Vector2 centre,
+            float halfLength,
+            float halfWidth,
+            float baseZ,
+            float topZ,
+            Color colour,
+            bool alongX)
+        {
+            float halfX = alongX ? halfLength : halfWidth;
+            float halfY = alongX ? halfWidth : halfLength;
+
+            Vector3 a = new Vector3(centre.x - halfX, centre.y - halfY, topZ);
+            Vector3 b = new Vector3(centre.x + halfX, centre.y - halfY, topZ);
+            Vector3 c = new Vector3(centre.x + halfX, centre.y + halfY, topZ);
+            Vector3 d = new Vector3(centre.x - halfX, centre.y + halfY, topZ);
+            builder.AddQuad(a, b, c, d, Up, Up, Up, Up, colour, colour, colour, colour);
+
+            // Sides, so the cross has thickness from a low angle rather than
+            // looking painted on.
+            Vector3 la = new Vector3(a.x, a.y, baseZ);
+            Vector3 lb = new Vector3(b.x, b.y, baseZ);
+            Vector3 lc = new Vector3(c.x, c.y, baseZ);
+            Vector3 ld = new Vector3(d.x, d.y, baseZ);
+            Color side = LudoBoardVisualStyle.Shade(colour, 0.28f);
+
+            AddSide(builder, la, lb, b, a, side);
+            AddSide(builder, lb, lc, c, b, side);
+            AddSide(builder, lc, ld, d, c, side);
+            AddSide(builder, ld, la, a, d, side);
+        }
+
+        private static void AddSide(
+            LudoProceduralMesh builder,
+            Vector3 a,
+            Vector3 b,
+            Vector3 c,
+            Vector3 d,
+            Color colour)
+        {
+            Vector3 normal = Vector3.Cross(b - a, c - a).normalized;
+            builder.AddQuad(
+                a, b, c, d,
+                normal, normal, normal, normal,
+                colour, colour, colour, colour);
         }
 
         /// <summary>A flat ribbon on the ground joining two nodes.</summary>
@@ -522,6 +623,8 @@ namespace ElementalLudo.Board
                 LudoRunNodeKind.Reward => LudoBoardVisualStyle.Yellow,
                 LudoRunNodeKind.Duel =>
                     LudoBoardVisualStyle.Lighten(LudoBoardVisualStyle.Blue, 0.15f),
+                LudoRunNodeKind.Heal =>
+                    LudoBoardVisualStyle.Lighten(LudoBoardVisualStyle.Green, 0.2f),
                 LudoRunNodeKind.Match => LudoBoardVisualStyle.SandMid,
                 LudoRunNodeKind.Elite =>
                     LudoBoardVisualStyle.Lighten(LudoBoardVisualStyle.Red, 0.38f),
@@ -596,16 +699,47 @@ namespace ElementalLudo.Board
         // Picking
         // ------------------------------------------------------------------
 
-        private void ClearPickers()
+        /// <summary>
+        /// Colliders and rival tokens, built once for a map rather than with
+        /// every mesh rebuild.
+        ///
+        /// Neither depends on anything the rebuild changes — a node never moves
+        /// and its rival never changes — and remaking them was actively
+        /// harmful: Destroy only takes effect at the end of the frame, so for
+        /// one frame the old colliders were still in the scene while the
+        /// dictionary held only the new ones, and a ray hitting an old one
+        /// found nothing and gave up.
+        /// </summary>
+        private void EnsureNodeObjects()
         {
-            nodePickers.Clear();
-            if (pickers == null)
+            if (builtMap == run.Map)
             {
                 return;
             }
 
-            Destroy(pickers);
-            pickers = null;
+            builtMap = run.Map;
+            ClearNodeObjects();
+
+            for (int stage = 0; stage < run.Map.StageCount; stage++)
+            {
+                foreach (LudoRunNode node in run.Map.Stage(stage))
+                {
+                    BuildPicker(node);
+                    BuildRivalToken(node);
+                }
+            }
+        }
+
+        private void ClearNodeObjects()
+        {
+            nodePickers.Clear();
+            if (pickers != null)
+            {
+                Destroy(pickers);
+                pickers = null;
+            }
+
+            ClearRivalTokens();
         }
 
         /// <summary>
@@ -651,14 +785,29 @@ namespace ElementalLudo.Board
                 return;
             }
 
+            // Every hit, not just the nearest. A rival token floats over its
+            // node, and taking only the first thing the ray met would let it
+            // shadow the very node it advertises — which is exactly the case
+            // where the player most wants to click.
             Ray ray = mapCamera.ScreenPointToRay(mouse.position.ReadValue());
-            if (!Physics.Raycast(ray, out RaycastHit hit, 200f))
+            int count = Physics.RaycastNonAlloc(ray, rayHits, 200f);
+
+            LudoRunNode node = null;
+            float nearest = float.MaxValue;
+            for (int index = 0; index < count; index++)
             {
-                return;
+                if (!nodePickers.TryGetValue(rayHits[index].collider, out LudoRunNode found) ||
+                    !run.IsChoice(found) ||
+                    rayHits[index].distance >= nearest)
+                {
+                    continue;
+                }
+
+                nearest = rayHits[index].distance;
+                node = found;
             }
 
-            if (!nodePickers.TryGetValue(hit.collider, out LudoRunNode node) ||
-                !run.IsChoice(node))
+            if (node == null)
             {
                 return;
             }

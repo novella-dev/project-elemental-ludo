@@ -61,6 +61,7 @@ namespace ElementalLudo.Gameplay
             }
 
             int finished = 0;
+            int playable = 0;
             foreach (Token token in tokens)
             {
                 if (token == null)
@@ -68,15 +69,27 @@ namespace ElementalLudo.Gameplay
                     return false;
                 }
 
-                if (boardState.GetState(token) == TokenState.Finished)
+                TokenState state = boardState.GetState(token);
+                if (state == TokenState.Eliminated)
+                {
+                    continue;
+                }
+
+                playable++;
+                if (state == TokenState.Finished)
                 {
                     finished++;
                 }
             }
 
+            // Counted against the tokens still in play rather than a flat four,
+            // so a seat that starts short — as the final game of an Adventure
+            // run does, one token per life lost — can still win by bringing
+            // everything it has home. With nothing eliminated this is exactly
+            // the old rule, so no other mode changes.
             return context.PermadeathEnabled
                 ? finished >= 1
-                : finished == TokensRequiredToWin;
+                : playable > 0 && finished == playable;
         }
 
         /// <summary>

@@ -93,13 +93,47 @@ namespace ElementalLudo.Gameplay
             }
 
             kinds.Add(new List<LudoRunNodeKind> { LudoRunNodeKind.Boss });
+            PlaceHeal(kinds, random);
             return kinds;
         }
 
         /// <summary>
-        /// Weighted so a run alternates long and short fights, with elites held
-        /// back. Stage 1 is never an elite: the player has had exactly one
-        /// reward at that point and nothing to bring to a hard fight.
+        /// Turns one node of the stage before the boss into a heal.
+        ///
+        /// Placed rather than rolled, so the chance to arrive at the final game
+        /// patched up always exists — but only on one lane, so reaching it is a
+        /// choice made several stages earlier and not a given. A stage that is
+        /// only one node wide is left alone: there the heal would be
+        /// compulsory, which is the same as not being a decision at all.
+        /// </summary>
+        private static void PlaceHeal(
+            List<List<LudoRunNodeKind>> kinds,
+            System.Random random)
+        {
+            int stage = kinds.Count - 2;
+            if (stage < 1)
+            {
+                return;
+            }
+
+            List<LudoRunNodeKind> row = kinds[stage];
+            if (row.Count < 2)
+            {
+                return;
+            }
+
+            row[random.Next(row.Count)] = LudoRunNodeKind.Heal;
+        }
+
+        /// <summary>
+        /// What a middle stage offers.
+        ///
+        /// Never a match: the board game is what the run builds up to, and only
+        /// the boss is one. Everything on the way is a duel, a free reward or
+        /// an elite, so the run stays quick and the final game keeps its weight.
+        ///
+        /// Stage 1 is never an elite — the player has had exactly one reward by
+        /// then and nothing to bring to a hard fight.
         /// </summary>
         private static LudoRunNodeKind PickKind(int stage, System.Random random)
         {
@@ -107,22 +141,17 @@ namespace ElementalLudo.Gameplay
 
             if (stage <= 1)
             {
-                return roll < 55
+                return roll < 70
                     ? LudoRunNodeKind.Duel
-                    : LudoRunNodeKind.Match;
+                    : LudoRunNodeKind.Reward;
             }
 
-            if (roll < 35)
+            if (roll < 52)
             {
                 return LudoRunNodeKind.Duel;
             }
 
-            if (roll < 65)
-            {
-                return LudoRunNodeKind.Match;
-            }
-
-            return roll < 85
+            return roll < 78
                 ? LudoRunNodeKind.Elite
                 : LudoRunNodeKind.Reward;
         }

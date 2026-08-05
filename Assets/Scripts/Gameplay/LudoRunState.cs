@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using ElementalLudo.Tokens;
+using UnityEngine;
 
 namespace ElementalLudo.Gameplay
 {
@@ -35,15 +36,40 @@ namespace ElementalLudo.Gameplay
         private readonly List<LudoRunNode> choices = new List<LudoRunNode>(3);
         private readonly List<LudoRunNode> path = new List<LudoRunNode>(8);
 
+        /// <summary>
+        /// Lives, which are also the tokens the final game is played with. Four
+        /// is the full board; every duel lost costs one, so arriving at the
+        /// boss intact is worth as much as any upgrade.
+        /// </summary>
+        public const int MaxLives = 4;
+
+        /// <summary>How many lives a heal node gives back.</summary>
+        public const int HealAmount = 2;
+
         public LudoRunState(LudoElement element, LudoRunMap map)
         {
             Element = element;
             Map = map;
             Upgrades = new LudoUpgradeInventory();
+            Lives = MaxLives;
             Stage = 0;
             Lane = 0;
             Status = LudoRunStatus.AtNode;
             path.Add(map.Node(0, 0));
+        }
+
+        /// <summary>
+        /// Lives left, and so the number of tokens the final game starts with.
+        /// At zero the run is over.
+        /// </summary>
+        public int Lives { get; private set; }
+
+        /// <summary>Tops up to the cap, returning how many were actually given back.</summary>
+        public int Heal()
+        {
+            int before = Lives;
+            Lives = Mathf.Min(MaxLives, Lives + HealAmount);
+            return Lives - before;
         }
 
         /// <summary>
@@ -104,9 +130,12 @@ namespace ElementalLudo.Gameplay
             node != null && node.Stage == Stage && node.Lane == Lane;
 
         /// <summary>
-        /// Settles the current node. Losing anywhere ends the run; winning the
-        /// last stage wins it, and winning anywhere else opens up the choice of
-        /// where to go next.
+        /// Settles the current node.
+        ///
+        /// Losing a duel costs a life rather than the run: the player carries
+        /// on wounded, and only running out of lives ends it. The final game is
+        /// different — it is the last stage, so losing it ends the run whatever
+        /// lives are left, and winning it wins the run.
         /// </summary>
         public void ResolveCurrentNode(bool won)
         {
@@ -115,18 +144,25 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
-            if (!won)
-            {
-                Status = LudoRunStatus.Lost;
-                choices.Clear();
-                return;
-            }
+            bool isFinalStage = Stage >= Map.StageCount - 1;
 
-            if (Stage >= Map.StageCount - 1)
+            if (won && isFinalStage)
             {
                 Status = LudoRunStatus.Won;
                 choices.Clear();
                 return;
+            }
+
+            if (!won)
+            {
+                Lives--;
+                if (Lives <= 0 || isFinalStage)
+                {
+                    Lives = Mathf.Max(0, Lives);
+                    Status = LudoRunStatus.Lost;
+                    choices.Clear();
+                    return;
+                }
             }
 
             Status = LudoRunStatus.Choosing;

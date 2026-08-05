@@ -55,14 +55,18 @@ namespace ElementalLudo.Gameplay
         [SerializeField] private float combatRerollDelay = 0.45f;
 
         /// <summary>
-        /// Stages in a run: a reward to open with, four choices, and the boss.
-        /// Short on purpose — a run should finish in one sitting, and it can be
-        /// lengthened later without changing anything else.
+        /// Stages in a run: a reward to open with, ten choices, and the final
+        /// game. Only the last is a game of Ludo — everything before it is a
+        /// duel or a free stop, which is what lets the run be this long and
+        /// still finish in one sitting.
         /// </summary>
-        private const int RunStageCount = 6;
+        private const int RunStageCount = 12;
 
         /// <summary>Rounds needed to take a loose combat: best of three.</summary>
         private const int RunDuelWinsNeeded = 2;
+
+        /// <summary>An elite goes to three, so it is a longer fight and not just a harder one.</summary>
+        private const int RunEliteWinsNeeded = 3;
 
         private const int MaxMoveHistoryEntries = 30;
         private const float SharedCellOffsetMagnitude = 0.55f;
@@ -126,6 +130,7 @@ namespace ElementalLudo.Gameplay
         /// <summary>Rounds taken so far in a loose combat, which is best of three.</summary>
         private int runDuelPlayerWins;
         private int runDuelRivalWins;
+        private int runNodeWinsNeeded = 2;
 
         /// <summary>True while the token is travelling between map nodes.</summary>
         private bool runWalking;
@@ -561,6 +566,23 @@ namespace ElementalLudo.Gameplay
             runMapView.NodeClicked = node => TryEnterNode(node);
         }
 
+        /// <summary>The run element's colour, for the lives row.</summary>
+        public Color RunElementColor
+        {
+            get
+            {
+                if (currentRun == null)
+                {
+                    return Color.white;
+                }
+
+                int seat = SeatForElement(currentRun.Element);
+                return seat < players.Count
+                    ? players[seat].Style.TokenColor
+                    : Color.white;
+            }
+        }
+
         /// <summary>The node the pointer is over on the map, or null.</summary>
         public LudoRunNode HoveredRunNode =>
             runMapView != null ? runMapView.HoveredNode : null;
@@ -623,7 +645,21 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
+            if (node.Kind == LudoRunNodeKind.Heal)
+            {
+                int restored = currentRun.Heal();
+                statusMessage = restored > 0
+                    ? $"Recuperas {restored} vida(s). Te quedan {currentRun.Lives}."
+                    : "Ya estabas al máximo.";
+                LogMove(statusMessage);
+                currentRun.ResolveCurrentNode(true);
+                return;
+            }
+
             runNodeActive = true;
+            runNodeWinsNeeded = node.Kind == LudoRunNodeKind.Elite
+                ? RunEliteWinsNeeded
+                : RunDuelWinsNeeded;
 
             // Given up here and now, not on the next frame's sync. The arena
             // takes the screen by asking Camera.main for the board's camera,
@@ -636,13 +672,14 @@ namespace ElementalLudo.Gameplay
                 runMapView.Hide();
             }
 
-            if (node.Kind == LudoRunNodeKind.Duel)
+            if (node.Kind != LudoRunNodeKind.Match && node.Kind != LudoRunNodeKind.Boss)
             {
                 StartCoroutine(PlayRunDuel());
                 return;
             }
 
             StartMatch(BuildRunMatchSettings(node.Kind));
+            ApplyRunLivesToBoard();
         }
 
         /// <summary>
@@ -672,8 +709,8 @@ namespace ElementalLudo.Gameplay
             // Best of three. A single throw hangs the whole node on one roll,
             // and with ties going to the defender that made a loose combat
             // swingier than a capture on the board ever is.
-            while (runDuelPlayerWins < RunDuelWinsNeeded &&
-                   runDuelRivalWins < RunDuelWinsNeeded)
+            while (runDuelPlayerWins < runNodeWinsNeeded &&
+                   runDuelRivalWins < runNodeWinsNeeded)
             {
                 // The player attacks, so they throw first and the rival answers
                 // knowing the score — the same shape as a capture on the board.
@@ -696,7 +733,7 @@ namespace ElementalLudo.Gameplay
 
             ActiveUpgrades.ConsumeArmedDuelUpgrades();
 
-            bool won = runDuelPlayerWins >= RunDuelWinsNeeded;
+            bool won = runDuelPlayerWins >= runNodeWinsNeeded;
             LogMove(won
                 ? $"Ganas el combate {runDuelPlayerWins}-{runDuelRivalWins}."
                 : $"Pierdes el combate {runDuelPlayerWins}-{runDuelRivalWins}.");
@@ -804,6 +841,43 @@ namespace ElementalLudo.Gameplay
                 currentRun.Element,
                 difficulty,
                 true);
+        }
+
+        /// <summary>
+        /// Starts the final game short by however many lives were lost, by
+        /// eliminating that many of the player's tokens before a die is thrown.
+        ///
+        /// This is what makes a duel lost five stages ago still cost something:
+        /// the run's damage arrives on the board as pieces the player simply
+        /// does not have.
+        /// </summary>
+        private void ApplyRunLivesToBoard()
+        {
+            if (currentRun == null || humanSeatIndex < 0 ||
+                humanSeatIndex >= players.Count)
+            {
+                return;
+            }
+
+            IReadOnlyList<Token> tokens = players[humanSeatIndex].Tokens;
+            int missing = Mathf.Clamp(
+                tokens.Count - currentRun.Lives,
+                0,
+                tokens.Count - 1);
+
+            for (int index = 0; index < missing; index++)
+            {
+                Token token = tokens[tokens.Count - 1 - index];
+                boardState.SetEliminated(token);
+                token.gameObject.SetActive(false);
+            }
+
+            if (missing > 0)
+            {
+                LogMove(
+                    $"Llegas con {currentRun.Lives} fichas: perdiste " +
+                    $"{missing} por el camino.");
+            }
         }
 
         /// <summary>The seat holding a given element, or the first one.</summary>

@@ -19,13 +19,20 @@ namespace ElementalLudo.Gameplay
         /// <summary>A loose dice duel in the arena, with no board.</summary>
         Duel,
 
-        /// <summary>A full game of Ludo against the AI.</summary>
+        /// <summary>
+        /// A full game of Ludo against the AI. Only the last stage is one:
+        /// every other fight is a duel, so the run stays quick and the board
+        /// game is the thing it builds up to.
+        /// </summary>
         Match,
 
-        /// <summary>A harder match, for a better reward.</summary>
+        /// <summary>A longer duel against a tougher rival, for a better reward.</summary>
         Elite,
 
-        /// <summary>Closes the run.</summary>
+        /// <summary>No fight. Gives lives back, up to the cap.</summary>
+        Heal,
+
+        /// <summary>Closes the run: the full game of Ludo it has been leading to.</summary>
         Boss
     }
 
@@ -69,6 +76,7 @@ namespace ElementalLudo.Gameplay
         public IReadOnlyList<int> NextLanes { get; }
 
         /// <summary>Whether reaching it means playing something.</summary>
-        public bool IsFight => Kind != LudoRunNodeKind.Reward;
+        public bool IsFight =>
+            Kind != LudoRunNodeKind.Reward && Kind != LudoRunNodeKind.Heal;
     }
 }

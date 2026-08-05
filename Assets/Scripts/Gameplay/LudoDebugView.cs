@@ -202,6 +202,8 @@ namespace ElementalLudo.Gameplay
                 $"{LudoElementInfo.DisplayName(run.Element)}  ·  " +
                 LudoRunInfo.StatusLine(run),
                 subtitleStyle);
+            GUILayout.Space(6f);
+            DrawRunLives(run);
             GUILayout.Space(8f);
 
             if (run.IsOver)
@@ -239,6 +241,36 @@ namespace ElementalLudo.Gameplay
             GUILayout.EndArea();
         }
 
+        /// <summary>
+        /// Lives as pips in the run's own colour, spent ones hollowed out.
+        /// Shown as a row rather than a number because they are also the tokens
+        /// the final game is played with, and a row of four reads as a board.
+        /// </summary>
+        private void DrawRunLives(LudoRunState run)
+        {
+            Color full = controller.RunElementColor;
+            Color spent = new Color(1f, 1f, 1f, 0.16f);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("VIDAS", sectionLabelStyle, GUILayout.Width(56f));
+            for (int index = 0; index < LudoRunState.MaxLives; index++)
+            {
+                GUILayout.Box(
+                    string.Empty,
+                    MakeAccentStyle(index < run.Lives ? full : spent),
+                    GUILayout.Width(18f),
+                    GUILayout.Height(18f));
+                GUILayout.Space(4f);
+            }
+
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+
+            GUILayout.Label(
+                $"Llegarás a la partida final con {run.Lives} ficha(s).",
+                hintStyle);
+        }
+
         /// <summary>Which colour on the map means what.</summary>
         private void DrawRunLegend()
         {
@@ -260,8 +292,8 @@ namespace ElementalLudo.Gameplay
         {
             LudoRunNodeKind.Reward,
             LudoRunNodeKind.Duel,
-            LudoRunNodeKind.Match,
             LudoRunNodeKind.Elite,
+            LudoRunNodeKind.Heal,
             LudoRunNodeKind.Boss
         };
 
@@ -275,10 +307,11 @@ namespace ElementalLudo.Gameplay
             return kind switch
             {
                 LudoRunNodeKind.Reward => new Color(1f, 0.80f, 0.08f),
-                LudoRunNodeKind.Duel => new Color(0.02f, 0.52f, 0.96f),
+                LudoRunNodeKind.Duel => new Color(0.17f, 0.59f, 0.97f),
+                LudoRunNodeKind.Heal => new Color(0.26f, 0.78f, 0.30f),
                 LudoRunNodeKind.Match => new Color(0.91f, 0.72f, 0.39f),
-                LudoRunNodeKind.Elite => new Color(0.95f, 0.075f, 0.20f),
-                LudoRunNodeKind.Boss => new Color(0.62f, 0.05f, 0.14f),
+                LudoRunNodeKind.Elite => new Color(0.97f, 0.43f, 0.50f),
+                LudoRunNodeKind.Boss => new Color(0.43f, 0.04f, 0.10f),
                 _ => Color.white
             };
         }
