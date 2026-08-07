@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using ElementalLudo.Board;
 using ElementalLudo.Tokens;
 using UnityEngine;
 
@@ -18,10 +19,10 @@ namespace ElementalLudo.Gameplay
     [DisallowMultipleComponent]
     public sealed class LudoDebugView : MonoBehaviour
     {
-        private const float PanelWidth = 380f;
+        private const float PanelWidth = 400f;
         private const float PanelMargin = 16f;
-        private const float RulesPanelWidth = 300f;
-        private const float HistoryPanelWidth = 340f;
+        private const float RulesPanelWidth = 330f;
+        private const float HistoryPanelWidth = 360f;
         private const float HistoryPanelHeight = 300f;
         private const float UpgradePanelHeight = 330f;
         private const int MaxHistoryEntries = 10;
@@ -29,16 +30,19 @@ namespace ElementalLudo.Gameplay
         [SerializeField] private LudoGameController controller;
         [SerializeField] private bool showPanel = true;
         [SerializeField] private Camera backgroundCamera;
-        [SerializeField] private Color darkBackground = Color.black;
-        [SerializeField] private Color lightBackground = Color.white;
+        [SerializeField] private Color darkBackground = new Color(0.07f, 0.09f, 0.12f, 1f);
+        [SerializeField] private Color lightBackground = new Color(0.80f, 0.84f, 0.89f, 1f);
 
         private readonly Dictionary<Color, Texture2D> textureCache =
             new Dictionary<Color, Texture2D>();
+        private readonly Dictionary<string, Texture2D> celTextureCache =
+            new Dictionary<string, Texture2D>();
 
         private LudoStartMenuView startMenuView;
 
         private GUIStyle panelStyle;
         private GUIStyle titleStyle;
+        private GUIStyle headerTitleStyle;
         private GUIStyle subtitleStyle;
         private GUIStyle playerNameStyle;
         private GUIStyle statusStyle;
@@ -46,6 +50,7 @@ namespace ElementalLudo.Gameplay
         private GUIStyle sectionLabelStyle;
         private GUIStyle hintStyle;
         private GUIStyle accentBarStyle;
+        private GUIStyle heartStyle;
         private GUIStyle actionCardStyle;
         private GUIStyle primaryButtonStyle;
         private GUIStyle endMatchButtonStyle;
@@ -57,8 +62,12 @@ namespace ElementalLudo.Gameplay
         private GUIStyle ruleTitleStyle;
         private GUIStyle historyLatestStyle;
         private GUIStyle backgroundButtonStyle;
+        private Font uiFont;
         private bool stylesReady;
         private bool lightBackgroundActive;
+        private bool showHudSettings;
+        private bool showHudUpgrades;
+        private bool showHudHistory;
 
         private void Awake()
         {
@@ -112,6 +121,15 @@ namespace ElementalLudo.Gameplay
             }
 
             textureCache.Clear();
+
+            foreach (Texture2D texture in celTextureCache.Values)
+            {
+                Destroy(texture);
+            }
+
+            celTextureCache.Clear();
+
+            uiFont = null;
         }
 
         private void OnGUI()
@@ -132,7 +150,6 @@ namespace ElementalLudo.Gameplay
             }
 
             RefreshBackgroundCamera();
-            DrawBackgroundToggle();
 
             if (controller == null || !controller.IsInitialized)
             {
@@ -168,30 +185,245 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
-            Color playerColor = controller.ActivePlayer.TokenColor;
+            DrawBoardAdventureHud(controller.ActivePlayer.TokenColor);
+        }
 
-            GUILayout.BeginArea(
-                new Rect(PanelMargin, PanelMargin, PanelWidth, 560f),
-                panelStyle);
+        /// <summary>
+        /// The board HUD follows the supplied adventure-menu composition: a
+        /// persistent steel header, quest and progress cards, and a navigation
+        /// rail with one dominant action. It deliberately does not reuse the
+        /// former diagnostic panel layout.
+        /// </summary>
+        private void DrawBoardAdventureHud(Color playerColor)
+        {
+            DrawReferenceTopBar(
+                $"{LudoGameModeInfo.DisplayName(controller.Settings.Mode).ToUpperInvariant()}  ·  " +
+                $"TURNO {LudoGameController.DisplayName(controller.ActivePlayer.PlayerId).ToUpperInvariant()}");
+            DrawReferenceQuestCard(playerColor);
+            DrawReferenceProgressCard();
+            DrawReferenceBottomBar();
 
-            DrawHeader(playerColor);
-            DrawStatusRow();
-            DrawAutoRollToggle();
-            DrawElementalToggle();
-            GUILayout.Space(10f);
-            DrawPhaseContent(playerColor);
-
-            GUILayout.EndArea();
-
-            DrawEndMatchButton();
-
-            if (controller.ElementalModeEnabled)
+            if (showHudSettings)
             {
-                DrawElementalRulesPanel();
+                DrawHudSettingsDrawer();
             }
 
-            DrawUpgradesPanel();
-            DrawHistoryPanel();
+            if (showHudUpgrades)
+            {
+                DrawUpgradesPanel();
+            }
+
+            if (showHudHistory)
+            {
+                DrawHistoryPanel();
+            }
+        }
+
+        private void DrawReferenceTopBar(string heading)
+        {
+            Rect header = new Rect(0f, 0f, Screen.width, 72f);
+            GUI.Box(header, string.Empty, panelStyle);
+
+            int lives = controller.CurrentRun != null
+                ? controller.CurrentRun.Lives
+                : LudoRunState.MaxLives;
+            for (int index = 0; index < LudoRunState.MaxLives; index++)
+            {
+                Color heartColor = index < lives
+                    ? new Color(1f, 0.22f, 0.31f)
+                    : LudoUITheme.Disabled;
+                GUI.Box(
+                    new Rect(18f + index * 50f, 13f, 42f, 38f),
+                    string.Empty,
+                    MakeHeartStyle(heartColor));
+            }
+
+            GUI.Label(new Rect(250f, 8f, Screen.width - 500f, 52f), heading, headerTitleStyle);
+            if (GUI.Button(new Rect(Screen.width - 70f, 10f, 54f, 50f), "⚙", toggleOffStyle))
+            {
+                showHudSettings = !showHudSettings;
+                showHudHistory = false;
+                showHudUpgrades = false;
+            }
+        }
+
+        private void DrawReferenceQuestCard(Color playerColor)
+        {
+            float height = controller.Phase == LudoTurnPhase.AwaitingAction
+                ? Mathf.Min(520f, 220f + controller.LegalActions.Count * 48f)
+                : 220f;
+            GUILayout.BeginArea(new Rect(18f, 92f, 330f, height), panelStyle);
+            GUILayout.Label("▣  QUEST", titleStyle);
+            GUILayout.Space(5f);
+            GUILayout.BeginHorizontal();
+            GUILayout.Box(string.Empty, MakeAccentStyle(playerColor), GUILayout.Width(14f), GUILayout.Height(22f));
+            GUILayout.Label(controller.StatusMessage, statusStyle);
+            GUILayout.EndHorizontal();
+            GUILayout.Space(8f);
+
+            if (controller.Phase == LudoTurnPhase.AwaitingAction && controller.IsActiveSeatHuman)
+            {
+                GUILayout.Label("○  ELIGE UNA FICHA", sectionLabelStyle);
+                DrawMovementRethrowButton();
+                for (int index = 0; index < controller.LegalActions.Count; index++)
+                {
+                    LudoLegalAction action = controller.LegalActions[index];
+                    string description = action.Type == LudoActionType.LeaveHome
+                        ? $"Sacar {action.Token.name}"
+                        : $"Mover {action.Token.name} · {controller.GetActionMoveDistance(action)}";
+                    if (GUILayout.Button(description, actionCardStyle, GUILayout.Height(38f)))
+                    {
+                        controller.TrySelectToken(action.Token);
+                    }
+                }
+            }
+            else
+            {
+                GUILayout.Label("●  Completa tu turno", sectionLabelStyle);
+                GUILayout.Label("│", hintStyle);
+                GUILayout.Label("○  Lleva las cuatro fichas a la meta", hintStyle);
+            }
+
+            GUILayout.EndArea();
+        }
+
+        private void DrawReferenceProgressCard()
+        {
+            Rect card = new Rect(Screen.width - 205f, 92f, 185f, 205f);
+            GUI.Box(card, string.Empty, panelStyle);
+            GUI.Label(new Rect(card.x + 12f, card.y + 12f, 161f, 32f), "PROGRESO", sectionLabelStyle);
+
+            Vector2[] points =
+            {
+                new Vector2(card.x + 55f, card.y + 155f),
+                new Vector2(card.x + 100f, card.y + 130f),
+                new Vector2(card.x + 74f, card.y + 98f),
+                new Vector2(card.x + 125f, card.y + 68f)
+            };
+            Color[] colours =
+            {
+                LudoUITheme.Water, LudoUITheme.Reward,
+                LudoUITheme.Danger, LudoUITheme.Plant
+            };
+            for (int index = 0; index < points.Length; index++)
+            {
+                if (index > 0)
+                {
+                    DrawGuiLine(points[index - 1], points[index], 5f, LudoUITheme.Ink);
+                }
+
+                GUI.DrawTexture(
+                    new Rect(points[index].x - 7f, points[index].y - 7f, 14f, 14f),
+                    GetSolidTexture(colours[index]));
+            }
+            GUI.Label(new Rect(card.x + 10f, card.y + 164f, 165f, 28f), "HASTA EL JEFE FINAL", hintStyle);
+        }
+
+        private void DrawReferenceBottomBar()
+        {
+            const float height = 104f;
+            float y = Screen.height - height;
+            GUI.Box(new Rect(0f, y, Screen.width, height), string.Empty, panelStyle);
+
+            if (GUI.Button(new Rect(16f, y + 10f, 150f, 78f), "▱\nAVENTURA", toggleOnStyle))
+            {
+                showHudHistory = false;
+                showHudUpgrades = false;
+            }
+            if (GUI.Button(new Rect(176f, y + 10f, 150f, 78f), "⇧\nMEJORAS", toggleOffStyle))
+            {
+                showHudUpgrades = !showHudUpgrades;
+                showHudHistory = false;
+            }
+            if (GUI.Button(new Rect(Screen.width - 326f, y + 10f, 150f, 78f), "▣\nINVENTARIO", toggleOffStyle))
+            {
+                showHudUpgrades = !showHudUpgrades;
+                showHudHistory = false;
+            }
+            if (GUI.Button(new Rect(Screen.width - 166f, y + 10f, 150f, 78f), "▤\nHISTORIA", toggleOffStyle))
+            {
+                showHudHistory = !showHudHistory;
+                showHudUpgrades = false;
+            }
+
+            Rect main = new Rect((Screen.width - 340f) * 0.5f, y - 8f, 340f, 88f);
+            if (controller.Phase == LudoTurnPhase.GameOver)
+            {
+                if (GUI.Button(main, "JUGAR OTRA VEZ", primaryButtonStyle))
+                {
+                    controller.RestartGame();
+                }
+            }
+            else if (controller.Phase == LudoTurnPhase.AwaitingRoll &&
+                !controller.IsDiceRolling && controller.IsActiveSeatHuman)
+            {
+                if (GUI.Button(main, "TIRAR DADO", primaryButtonStyle))
+                {
+                    controller.RequestRoll();
+                }
+            }
+            else
+            {
+                GUI.Box(main, ShortPhaseLabel(), actionCardStyle);
+            }
+        }
+
+        private string ShortPhaseLabel()
+        {
+            if (controller.IsDiceRolling)
+            {
+                return "TIRANDO...";
+            }
+
+            return controller.Phase switch
+            {
+                LudoTurnPhase.AwaitingAction => "ELIGE UNA FICHA",
+                LudoTurnPhase.GameOver => "PARTIDA TERMINADA",
+                _ => "ESPERA"
+            };
+        }
+
+        private void DrawHudSettingsDrawer()
+        {
+            const float width = 330f;
+            GUILayout.BeginArea(new Rect(Screen.width - width - 20f, 92f, width, 260f), panelStyle);
+            GUILayout.Label("CONFIGURACIÓN", titleStyle);
+            DrawSettingsRow();
+            GUILayout.Space(8f);
+            if (GUILayout.Button(
+                    lightBackgroundActive ? "FONDO: BLANCO" : "FONDO: NEGRO",
+                    backgroundButtonStyle))
+            {
+                lightBackgroundActive = !lightBackgroundActive;
+                ApplyBackgroundColor();
+            }
+            if (GUILayout.Button("SALIR DE PARTIDA", endMatchButtonStyle))
+            {
+                controller.ReturnToMenu();
+            }
+            GUILayout.EndArea();
+        }
+
+        private void DrawGuiLine(Vector2 from, Vector2 to, float width, Color colour)
+        {
+            Matrix4x4 previous = GUI.matrix;
+            Color previousColor = GUI.color;
+            Vector2 delta = to - from;
+            GUIUtility.RotateAroundPivot(Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg, from);
+            GUI.color = colour;
+            GUI.DrawTexture(new Rect(from.x, from.y - width * 0.5f, delta.magnitude, width), Texture2D.whiteTexture);
+            GUI.color = previousColor;
+            GUI.matrix = previous;
+        }
+
+        private float GetMainPanelHeight()
+        {
+            return controller.Phase switch
+            {
+                LudoTurnPhase.AwaitingAction => 560f,
+                LudoTurnPhase.GameOver => 390f,
+                _ => 350f
+            };
         }
 
         // ------------------------------------------------------------------
@@ -211,36 +443,29 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
-            // The map itself is drawn in 3D and clicked there; this is the
-            // legend beside it. Putting the node list back here as buttons
-            // would give the player two places to click for the same thing.
-            const float width = 340f;
-            const float height = 250f;
-            GUILayout.BeginArea(
-                new Rect(
-                    PanelMargin,
-                    PanelMargin,
-                    width,
-                    height),
-                panelStyle);
+            DrawReferenceTopBar($"STAGE {Mathf.Max(1, run.Stage + 1)}-{run.Map.StageCount}");
 
-            GUILayout.Label("LA AVENTURA", titleStyle);
+            const float width = 370f;
+            const float height = 250f;
+            GUILayout.BeginArea(new Rect(18f, 92f, width, height), panelStyle);
+            GUILayout.Label("▣  QUEST", titleStyle);
+            GUILayout.Label("●  Sigue el rastro elemental", sectionLabelStyle);
+            GUILayout.Label("│", hintStyle);
+            GUILayout.Label("○  Completa un nodo de combate", hintStyle);
+            GUILayout.Space(8f);
             GUILayout.Label(
-                $"{LudoElementInfo.DisplayName(run.Element)}  ·  " +
-                LudoRunInfo.StatusLine(run),
+                $"{LudoElementInfo.DisplayName(run.Element).ToUpperInvariant()} · {LudoRunInfo.StatusLine(run)}",
                 subtitleStyle);
-            GUILayout.Space(6f);
-            DrawRunLives(run);
             GUILayout.Space(8f);
 
             if (run.IsOver)
             {
                 DrawRunEnding(run);
                 GUILayout.EndArea();
+                DrawRunBottomBar(null);
                 return;
             }
 
-            // Named on hover, since a coloured disc alone cannot say what it is.
             LudoRunNode hovered = controller.HoveredRunNode;
             if (hovered != null)
             {
@@ -255,23 +480,62 @@ namespace ElementalLudo.Gameplay
                         : LudoRunInfo.NodeName(run.CurrentNode.Kind),
                     hintStyle);
             }
+            GUILayout.EndArea();
+            DrawReferenceProgressCard();
+            DrawRunBottomBar(hovered);
 
-            GUILayout.Space(8f);
-            DrawRunLegend();
-
-            GUILayout.FlexibleSpace();
-            if (GUILayout.Button("Abandonar", endMatchButtonStyle))
+            if (showHudSettings)
             {
-                controller.ReturnToMenu();
+                DrawHudSettingsDrawer();
+            }
+            if (showHudUpgrades)
+            {
+                DrawUpgradesPanel();
+            }
+            if (showHudHistory)
+            {
+                DrawHistoryPanel();
+            }
+        }
+
+        private void DrawRunBottomBar(LudoRunNode hovered)
+        {
+            const float height = 104f;
+            float y = Screen.height - height;
+            GUI.Box(new Rect(0f, y, Screen.width, height), string.Empty, panelStyle);
+            if (GUI.Button(new Rect(16f, y + 10f, 150f, 78f), "▱\nAVENTURA", toggleOnStyle))
+            {
+                showHudUpgrades = false;
+                showHudHistory = false;
+            }
+            if (GUI.Button(new Rect(176f, y + 10f, 150f, 78f), "⇧\nMEJORAS", toggleOffStyle))
+            {
+                showHudUpgrades = !showHudUpgrades;
+                showHudHistory = false;
+            }
+            if (GUI.Button(new Rect(Screen.width - 326f, y + 10f, 150f, 78f), "▣\nINVENTARIO", toggleOffStyle))
+            {
+                showHudUpgrades = !showHudUpgrades;
+                showHudHistory = false;
+            }
+            if (GUI.Button(new Rect(Screen.width - 166f, y + 10f, 150f, 78f), "▤\nHISTORIA", toggleOffStyle))
+            {
+                showHudHistory = !showHudHistory;
+                showHudUpgrades = false;
             }
 
-            GUILayout.EndArea();
-
-            // The map is the only moment upgrades can be armed. A duel hides
-            // every board panel, and the run is nearly all duels now — so
-            // without this the rewards being collected had nowhere to be
-            // switched on and quietly did nothing.
-            DrawUpgradesPanel();
+            Rect start = new Rect((Screen.width - 340f) * 0.5f, y - 8f, 340f, 88f);
+            if (hovered != null)
+            {
+                if (GUI.Button(start, "START", primaryButtonStyle))
+                {
+                    controller.TryEnterNode(hovered);
+                }
+            }
+            else
+            {
+                GUI.Box(start, "ELIGE UN NODO", actionCardStyle);
+            }
         }
 
         /// <summary>
@@ -282,7 +546,7 @@ namespace ElementalLudo.Gameplay
         private void DrawRunLives(LudoRunState run)
         {
             Color full = controller.RunElementColor;
-            Color spent = new Color(1f, 1f, 1f, 0.16f);
+            Color spent = LudoUITheme.Disabled;
 
             GUILayout.BeginHorizontal();
             GUILayout.Label("VIDAS", sectionLabelStyle, GUILayout.Width(56f));
@@ -290,9 +554,9 @@ namespace ElementalLudo.Gameplay
             {
                 GUILayout.Box(
                     string.Empty,
-                    MakeAccentStyle(index < run.Lives ? full : spent),
-                    GUILayout.Width(18f),
-                    GUILayout.Height(18f));
+                    MakeHeartStyle(index < run.Lives ? full : spent),
+                    GUILayout.Width(26f),
+                    GUILayout.Height(24f));
                 GUILayout.Space(4f);
             }
 
@@ -370,58 +634,61 @@ namespace ElementalLudo.Gameplay
         private void DrawRewardScreen()
         {
             IReadOnlyList<LudoUpgrade> offer = controller.RewardOffer;
+            GUI.DrawTexture(
+                new Rect(0f, 0f, Screen.width, Screen.height),
+                GetSolidTexture(new Color(0.07f, 0.09f, 0.12f, 0.96f)));
+            DrawReferenceTopBar("RECOMPENSA DE AVENTURA");
 
-            const float width = 660f;
-            const float height = 360f;
-            GUILayout.BeginArea(
-                new Rect(
-                    (Screen.width - width) * 0.5f,
-                    (Screen.height - height) * 0.5f,
-                    width,
-                    height),
-                panelStyle);
-
-            GUILayout.Label("ELIGE UNA MEJORA", titleStyle);
-            GUILayout.Label(
-                "Se activan cuando tú quieras y se gastan al usarse.",
+            GUI.Label(
+                new Rect(0f, 88f, Screen.width, 55f),
+                "ELIGE UNA MEJORA",
+                headerTitleStyle);
+            GUI.Label(
+                new Rect(0f, 135f, Screen.width, 34f),
+                "Escoge una carta para incorporarla a tu inventario.",
                 subtitleStyle);
-            GUILayout.Space(10f);
 
+            int count = Mathf.Max(1, offer.Count);
+            float cardWidth = Mathf.Min(320f, (Screen.width - 120f) / count - 22f);
+            float totalWidth = count * cardWidth + (count - 1) * 24f;
+            float firstX = (Screen.width - totalWidth) * 0.5f;
             for (int index = 0; index < offer.Count; index++)
             {
                 LudoUpgrade upgrade = offer[index];
-
-                GUILayout.BeginVertical(panelStyle);
-                if (GUILayout.Button(
-                        LudoUpgradeInfo.DisplayName(upgrade),
-                        primaryButtonStyle))
+                float x = firstX + index * (cardWidth + 24f);
+                GUILayout.BeginArea(new Rect(x, 195f, cardWidth, 345f), panelStyle);
+                GUILayout.Label("◆", winnerStyle);
+                GUILayout.Space(8f);
+                GUILayout.Label(LudoUpgradeInfo.DisplayName(upgrade).ToUpperInvariant(), sectionLabelStyle);
+                GUILayout.Space(10f);
+                GUILayout.Label(LudoUpgradeInfo.Describe(upgrade), statusStyle);
+                GUILayout.FlexibleSpace();
+                GUILayout.Label(
+                    $"{upgrade.Charges} USOS · {LudoUpgradeInfo.ScopeName(upgrade.Scope).ToUpperInvariant()}" +
+                    (upgrade.Level > 1 ? " · SUBE DE NIVEL" : string.Empty),
+                    hintStyle);
+                if (GUILayout.Button("ELEGIR", primaryButtonStyle, GUILayout.Height(58f)))
                 {
                     controller.ClaimReward(index);
                 }
-
-                GUILayout.Label(LudoUpgradeInfo.Describe(upgrade), hintStyle);
-                GUILayout.Label(
-                    $"{upgrade.Charges} usos · " +
-                    $"{LudoUpgradeInfo.ScopeName(upgrade.Scope)}" +
-                    (upgrade.Level > 1 ? "  ·  sube de nivel" : string.Empty),
-                    hintStyle);
-                GUILayout.EndVertical();
-                GUILayout.Space(6f);
+                GUILayout.EndArea();
             }
 
             LudoRunState run = controller.CurrentRun;
-            if (run != null && run.RefreshesLeft > 0)
+            if (run != null && run.RefreshesLeft > 0 &&
+                GUI.Button(
+                    new Rect((Screen.width - 310f) * 0.5f, 565f, 310f, 50f),
+                    $"CAMBIAR LAS TRES · {run.RefreshesLeft}",
+                    endMatchButtonStyle))
             {
-                GUILayout.Space(4f);
-                if (GUILayout.Button(
-                        $"Cambiar las tres ({run.RefreshesLeft} disponible)",
-                        endMatchButtonStyle))
-                {
-                    controller.TryRefreshRewardOffer();
-                }
+                controller.TryRefreshRewardOffer();
             }
 
-            GUILayout.EndArea();
+            GUI.Box(new Rect(0f, Screen.height - 90f, Screen.width, 90f), string.Empty, panelStyle);
+            if (showHudSettings)
+            {
+                DrawHudSettingsDrawer();
+            }
         }
 
         /// <summary>
@@ -445,7 +712,9 @@ namespace ElementalLudo.Gameplay
             float top = PanelMargin;
             if (!controller.IsCombatVisible)
             {
-                top += controller.CurrentRun != null ? 330f : 570f;
+                top += controller.CurrentRun != null
+                    ? 330f
+                    : GetMainPanelHeight() + 10f;
             }
 
             GUILayout.BeginArea(
@@ -589,11 +858,20 @@ namespace ElementalLudo.Gameplay
         private void DrawHeader(Color playerColor)
         {
             GUILayout.Label("ELEMENTAL LUDO", titleStyle);
-            GUILayout.Label("Fase 0 · Testing UI", subtitleStyle);
+            GUILayout.Label(
+                $"{LudoGameModeInfo.DisplayName(controller.Settings.Mode).ToUpperInvariant()}  ·  PARTIDA EN CURSO",
+                subtitleStyle);
+            GUILayout.Space(5f);
+            DrawStatusRule(playerColor);
             GUILayout.Space(8f);
 
             GUILayout.BeginHorizontal();
-            GUILayout.Box(string.Empty, MakeAccentStyle(playerColor), GUILayout.Width(6f), GUILayout.Height(28f));
+            Color previous = GUI.color;
+            float pulse = 0.82f + 0.18f *
+                (0.5f + 0.5f * Mathf.Sin(Time.realtimeSinceStartup * 3.4f));
+            GUI.color = new Color(1f, 1f, 1f, pulse);
+            GUILayout.Box(string.Empty, MakeAccentStyle(playerColor), GUILayout.Width(8f), GUILayout.Height(30f));
+            GUI.color = previous;
             GUILayout.Space(8f);
             GUILayout.Label(
                 LudoGameController.DisplayName(controller.ActivePlayer.PlayerId),
@@ -608,34 +886,79 @@ namespace ElementalLudo.Gameplay
             GUILayout.EndHorizontal();
         }
 
+        private void DrawStatusRule(Color playerColor)
+        {
+            Color previous = GUI.color;
+            float shimmer = 0.82f + 0.18f *
+                (0.5f + 0.5f * Mathf.Sin(Time.realtimeSinceStartup * 2.8f));
+            GUI.color = new Color(1f, 1f, 1f, shimmer);
+            GUILayout.Box(
+                string.Empty,
+                MakeAccentStyle(playerColor),
+                GUILayout.ExpandWidth(true),
+                GUILayout.Height(6f));
+            GUI.color = previous;
+        }
+
         private void DrawStatusRow()
         {
             GUILayout.Space(6f);
             GUILayout.Label(controller.StatusMessage, statusStyle);
         }
 
-        private void DrawAutoRollToggle()
+        private void DrawSettingsRow()
         {
             GUILayout.Space(6f);
-            string autoLabel = controller.AutoRoll ? "AUTO-ROLL: ON" : "AUTO-ROLL: OFF";
-            GUIStyle style = controller.AutoRoll ? toggleOnStyle : toggleOffStyle;
-            if (GUILayout.Button(autoLabel, style))
+            GUILayout.BeginHorizontal();
+
+            string autoLabel = controller.AutoRoll ? "AUTO: SÍ" : "AUTO: NO";
+            GUIStyle autoStyle = controller.AutoRoll ? toggleOnStyle : toggleOffStyle;
+            if (GUILayout.Button(autoLabel, autoStyle))
             {
                 controller.AutoRoll = !controller.AutoRoll;
             }
-        }
 
-        private void DrawElementalToggle()
-        {
-            GUILayout.Space(4f);
             string label = controller.ElementalModeEnabled
-                ? "ELEMENTAL MODE: ON"
-                : "ELEMENTAL MODE: OFF";
-            GUIStyle style = controller.ElementalModeEnabled ? toggleOnStyle : toggleOffStyle;
-            if (GUILayout.Button(label, style))
+                ? "ELEMENTAL: SÍ"
+                : "ELEMENTAL: NO";
+            GUIStyle elementalStyle = controller.ElementalModeEnabled
+                ? toggleOnStyle
+                : toggleOffStyle;
+            if (GUILayout.Button(label, elementalStyle))
             {
                 controller.ElementalModeEnabled = !controller.ElementalModeEnabled;
             }
+
+            GUILayout.EndHorizontal();
+        }
+
+        private void DrawPrimaryTurnAction()
+        {
+            if (controller.Phase != LudoTurnPhase.AwaitingRoll ||
+                controller.IsDiceRolling ||
+                !controller.IsActiveSeatHuman)
+            {
+                return;
+            }
+
+            const float width = 300f;
+            const float height = 62f;
+            GUILayout.BeginArea(
+                new Rect(
+                    (Screen.width - width) * 0.5f,
+                    Screen.height - height - PanelMargin,
+                    width,
+                    height));
+
+            if (GUILayout.Button(
+                    "TIRAR DADO  ·  ESPACIO",
+                    primaryButtonStyle,
+                    GUILayout.Height(height)))
+            {
+                controller.RequestRoll();
+            }
+
+            GUILayout.EndArea();
         }
 
         /// <summary>
@@ -645,18 +968,18 @@ namespace ElementalLudo.Gameplay
         /// </summary>
         private void DrawEndMatchButton()
         {
-            const float width = 220f;
-            const float height = 44f;
+            const float width = 170f;
+            const float height = 42f;
 
             GUILayout.BeginArea(
                 new Rect(
-                    (Screen.width - width) * 0.5f,
+                    PanelMargin,
                     Screen.height - height - PanelMargin,
                     width,
                     height));
 
             if (GUILayout.Button(
-                    "Finalizar Partida",
+                    "SALIR DE PARTIDA",
                     endMatchButtonStyle,
                     GUILayout.Height(height)))
             {
@@ -957,21 +1280,25 @@ namespace ElementalLudo.Gameplay
 
         private void DrawHistoryPanel()
         {
+            IReadOnlyList<string> history = controller.MoveHistory;
+            float height = Mathf.Min(
+                HistoryPanelHeight,
+                112f + Mathf.Min(history.Count, MaxHistoryEntries) * 22f);
+
             GUILayout.BeginArea(
                 new Rect(
                     Screen.width - HistoryPanelWidth - PanelMargin,
-                    Screen.height - HistoryPanelHeight - PanelMargin,
+                    Screen.height - height - PanelMargin,
                     HistoryPanelWidth,
-                    HistoryPanelHeight),
+                    height),
                 panelStyle);
 
-            GUILayout.Label("MOVE HISTORY", sectionLabelStyle);
+            GUILayout.Label("HISTORIAL DE MOVIMIENTOS", sectionLabelStyle);
             GUILayout.Space(6f);
 
-            IReadOnlyList<string> history = controller.MoveHistory;
             if (history.Count == 0)
             {
-                GUILayout.Label("Nothing has happened yet.", hintStyle);
+                GUILayout.Label("Todavía no ha ocurrido ningún movimiento.", hintStyle);
             }
             else
             {
@@ -1041,7 +1368,7 @@ namespace ElementalLudo.Gameplay
             // hide the button meanwhile so it can't look unresponsive.
             if (controller.IsDiceRolling)
             {
-                GUILayout.Label("Rolling the die...", statusStyle);
+                GUILayout.Label("El dado está rodando...", statusStyle);
                 return;
             }
 
@@ -1053,13 +1380,9 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
-            if (GUILayout.Button("ROLL DICE  (Space)", primaryButtonStyle))
-            {
-                controller.RequestRoll();
-            }
-
-            GUILayout.Space(4f);
-            GUILayout.Label("You can also click the die on the board.", hintStyle);
+            GUILayout.Label(
+                "Usa el botón central, pulsa Espacio o haz clic en el dado del tablero.",
+                hintStyle);
         }
 
         /// <summary>
@@ -1094,16 +1417,16 @@ namespace ElementalLudo.Gameplay
 
             DrawMovementRethrowButton();
 
-            GUILayout.Label("LEGAL ACTIONS", sectionLabelStyle);
+            GUILayout.Label("MOVIMIENTOS DISPONIBLES", sectionLabelStyle);
             GUILayout.Space(4f);
 
             for (int index = 0; index < controller.LegalActions.Count; index++)
             {
                 LudoLegalAction action = controller.LegalActions[index];
                 string description = action.Type == LudoActionType.LeaveHome
-                    ? $"Take {action.Token.name} out of Home"
-                    : $"Move {action.Token.name}  ·  " +
-                      $"{controller.GetActionMoveDistance(action)} spaces";
+                    ? $"Sacar {action.Token.name} de casa"
+                    : $"Mover {action.Token.name}  ·  " +
+                      $"{controller.GetActionMoveDistance(action)} casillas";
 
                 GUILayout.BeginHorizontal();
                 GUILayout.Box(string.Empty, MakeAccentStyle(playerColor), GUILayout.Width(4f), GUILayout.Height(30f));
@@ -1118,13 +1441,13 @@ namespace ElementalLudo.Gameplay
             }
 
             GUILayout.Space(4f);
-            GUILayout.Label("Selectable tokens are highlighted on the board.", hintStyle);
+            GUILayout.Label("Las fichas disponibles están resaltadas en el tablero.", hintStyle);
         }
 
         private void DrawResolving()
         {
             int dotCount = Mathf.FloorToInt(Time.realtimeSinceStartup * 2f) % 4;
-            GUILayout.Label("Resolving turn" + new string('.', dotCount), hintStyle);
+            GUILayout.Label("Resolviendo turno" + new string('.', dotCount), hintStyle);
         }
 
         private void EnsureStyles()
@@ -1134,31 +1457,43 @@ namespace ElementalLudo.Gameplay
                 return;
             }
 
+            uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            if (uiFont != null)
+            {
+                GUI.skin.font = uiFont;
+            }
+
             panelStyle = new GUIStyle(GUI.skin.box)
             {
-                normal = { background = GetSolidTexture(new Color(0.05f, 0.05f, 0.08f, 0.9f)) },
-                padding = new RectOffset(18, 18, 16, 16),
-                border = new RectOffset(0, 0, 0, 0)
+                normal = { background = GetCelTexture(LudoUITheme.Panel) },
+                padding = new RectOffset(22, 22, 20, 20),
+                border = new RectOffset(9, 9, 9, 9)
             };
 
             titleStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 18,
+                fontSize = 20,
                 fontStyle = FontStyle.Bold,
-                normal = { textColor = Color.white }
+                normal = { textColor = LudoUITheme.TextPrimary }
+            };
+
+            headerTitleStyle = new GUIStyle(titleStyle)
+            {
+                fontSize = 28,
+                alignment = TextAnchor.MiddleCenter
             };
 
             subtitleStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 11,
-                normal = { textColor = new Color(1f, 1f, 1f, 0.45f) }
+                normal = { textColor = LudoUITheme.TextSecondary }
             };
 
             playerNameStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 20,
+                fontSize = 22,
                 fontStyle = FontStyle.Bold,
-                normal = { textColor = Color.white }
+                normal = { textColor = LudoUITheme.TextPrimary }
             };
 
             badgeStyle = new GUIStyle(GUI.skin.box)
@@ -1168,34 +1503,42 @@ namespace ElementalLudo.Gameplay
                 alignment = TextAnchor.MiddleCenter,
                 normal =
                 {
-                    background = GetSolidTexture(new Color(1f, 1f, 1f, 0.12f)),
-                    textColor = Color.white
+                    background = GetCelTexture(LudoUITheme.Lightning),
+                    textColor = LudoUITheme.Ink
                 }
             };
+            badgeStyle.border = new RectOffset(7, 7, 7, 7);
 
             statusStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 13,
                 fontStyle = FontStyle.Italic,
                 wordWrap = true,
-                normal = { textColor = new Color(1f, 1f, 1f, 0.75f) }
+                normal = { textColor = LudoUITheme.TextSecondary }
             };
 
             sectionLabelStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 11,
                 fontStyle = FontStyle.Bold,
-                normal = { textColor = new Color(1f, 1f, 1f, 0.5f) }
+                normal = { textColor = LudoUITheme.TextPrimary }
             };
 
             hintStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 11,
                 wordWrap = true,
-                normal = { textColor = new Color(1f, 1f, 1f, 0.4f) }
+                normal = { textColor = LudoUITheme.TextMuted }
             };
 
             accentBarStyle = new GUIStyle(GUI.skin.box)
+            {
+                border = new RectOffset(0, 0, 0, 0),
+                margin = new RectOffset(0, 0, 0, 0),
+                padding = new RectOffset(0, 0, 0, 0)
+            };
+
+            heartStyle = new GUIStyle(GUI.skin.box)
             {
                 border = new RectOffset(0, 0, 0, 0),
                 margin = new RectOffset(0, 0, 0, 0),
@@ -1210,33 +1553,35 @@ namespace ElementalLudo.Gameplay
                 padding = new RectOffset(12, 12, 10, 10),
                 normal =
                 {
-                    background = GetSolidTexture(new Color(1f, 1f, 1f, 0.06f)),
-                    textColor = Color.white
+                    background = GetCelTexture(LudoUITheme.Card),
+                    textColor = LudoUITheme.TextPrimary
                 },
                 hover =
                 {
-                    background = GetSolidTexture(new Color(1f, 1f, 1f, 0.14f)),
-                    textColor = Color.white
+                    background = GetCelTexture(LudoUITheme.CardHover),
+                    textColor = LudoUITheme.TextPrimary
                 }
             };
+            actionCardStyle.border = new RectOffset(8, 8, 8, 8);
 
             primaryButtonStyle = new GUIStyle(GUI.skin.button)
             {
-                fontSize = 15,
+                fontSize = 20,
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleCenter,
                 padding = new RectOffset(12, 12, 14, 14),
                 normal =
                 {
-                    background = GetSolidTexture(new Color(0.22f, 0.72f, 0.42f, 0.95f)),
-                    textColor = Color.white
+                    background = GetCelTexture(LudoUITheme.Cyan),
+                    textColor = LudoUITheme.TextPrimary
                 },
                 hover =
                 {
-                    background = GetSolidTexture(new Color(0.27f, 0.8f, 0.48f, 0.95f)),
-                    textColor = Color.white
+                    background = GetCelTexture(LudoUITheme.CyanHighlight),
+                    textColor = LudoUITheme.Ink
                 }
             };
+            primaryButtonStyle.border = new RectOffset(8, 8, 8, 8);
 
             // Grey while standing pat is just an option, green the moment it
             // wins the duel — the colour is the whole signal, so it stays
@@ -1249,27 +1594,28 @@ namespace ElementalLudo.Gameplay
                 padding = new RectOffset(16, 16, 10, 10),
                 normal =
                 {
-                    background = GetSolidTexture(new Color(0.34f, 0.36f, 0.40f, 0.95f)),
-                    textColor = new Color(0.88f, 0.90f, 0.93f)
+                    background = GetCelTexture(LudoUITheme.PanelRaised),
+                    textColor = LudoUITheme.TextPrimary
                 },
                 hover =
                 {
-                    background = GetSolidTexture(new Color(0.42f, 0.44f, 0.49f, 0.95f)),
-                    textColor = Color.white
+                    background = GetCelTexture(LudoUITheme.CardHover),
+                    textColor = LudoUITheme.TextPrimary
                 }
             };
+            standButtonStyle.border = new RectOffset(8, 8, 8, 8);
 
             standWinningButtonStyle = new GUIStyle(standButtonStyle)
             {
                 normal =
                 {
-                    background = GetSolidTexture(new Color(0.22f, 0.72f, 0.42f, 0.95f)),
-                    textColor = Color.white
+                    background = GetCelTexture(LudoUITheme.Cyan),
+                    textColor = LudoUITheme.TextPrimary
                 },
                 hover =
                 {
-                    background = GetSolidTexture(new Color(0.27f, 0.8f, 0.48f, 0.95f)),
-                    textColor = Color.white
+                    background = GetCelTexture(LudoUITheme.CyanHighlight),
+                    textColor = LudoUITheme.Ink
                 }
             };
 
@@ -1281,15 +1627,16 @@ namespace ElementalLudo.Gameplay
                 padding = new RectOffset(16, 16, 10, 10),
                 normal =
                 {
-                    background = GetSolidTexture(new Color(0.72f, 0.2f, 0.2f, 0.9f)),
+                    background = GetCelTexture(LudoUITheme.Danger),
                     textColor = Color.white
                 },
                 hover =
                 {
-                    background = GetSolidTexture(new Color(0.82f, 0.26f, 0.26f, 0.9f)),
+                    background = GetCelTexture(LudoBoardVisualStyle.Lighten(LudoUITheme.Danger, 0.12f)),
                     textColor = Color.white
                 }
             };
+            endMatchButtonStyle.border = new RectOffset(8, 8, 8, 8);
 
             toggleOnStyle = new GUIStyle(GUI.skin.button)
             {
@@ -1298,10 +1645,11 @@ namespace ElementalLudo.Gameplay
                 padding = new RectOffset(8, 8, 6, 6),
                 normal =
                 {
-                    background = GetSolidTexture(new Color(0.2f, 0.65f, 0.35f, 0.8f)),
-                    textColor = Color.white
+                    background = GetCelTexture(LudoUITheme.Cyan),
+                    textColor = LudoUITheme.TextPrimary
                 }
             };
+            toggleOnStyle.border = new RectOffset(8, 8, 8, 8);
 
             toggleOffStyle = new GUIStyle(GUI.skin.button)
             {
@@ -1310,17 +1658,18 @@ namespace ElementalLudo.Gameplay
                 padding = new RectOffset(8, 8, 6, 6),
                 normal =
                 {
-                    background = GetSolidTexture(new Color(1f, 1f, 1f, 0.08f)),
-                    textColor = new Color(1f, 1f, 1f, 0.6f)
+                    background = GetCelTexture(LudoUITheme.Card),
+                    textColor = LudoUITheme.TextSecondary
                 }
             };
+            toggleOffStyle.border = new RectOffset(8, 8, 8, 8);
 
             winnerStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 22,
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleCenter,
-                normal = { textColor = Color.white }
+                normal = { textColor = LudoUITheme.Reward }
             };
 
             ruleTitleStyle = new GUIStyle(GUI.skin.label)
@@ -1328,7 +1677,7 @@ namespace ElementalLudo.Gameplay
                 fontSize = 12,
                 fontStyle = FontStyle.Bold,
                 wordWrap = true,
-                normal = { textColor = Color.white }
+                normal = { textColor = LudoUITheme.TextPrimary }
             };
 
             historyLatestStyle = new GUIStyle(GUI.skin.label)
@@ -1336,7 +1685,7 @@ namespace ElementalLudo.Gameplay
                 fontSize = 11,
                 fontStyle = FontStyle.Bold,
                 wordWrap = true,
-                normal = { textColor = Color.white }
+                normal = { textColor = LudoUITheme.TextPrimary }
             };
 
             backgroundButtonStyle = new GUIStyle(toggleOffStyle)
@@ -1344,12 +1693,11 @@ namespace ElementalLudo.Gameplay
                 alignment = TextAnchor.MiddleCenter,
                 fontSize = 12
             };
-            backgroundButtonStyle.normal.background = GetSolidTexture(
-                new Color(0.03f, 0.04f, 0.05f, 0.82f));
-            backgroundButtonStyle.normal.textColor = Color.white;
-            backgroundButtonStyle.hover.background = GetSolidTexture(
-                new Color(0.08f, 0.10f, 0.12f, 0.94f));
-            backgroundButtonStyle.hover.textColor = Color.white;
+            backgroundButtonStyle.normal.background = GetCelTexture(LudoUITheme.Card);
+            backgroundButtonStyle.normal.textColor = LudoUITheme.TextPrimary;
+            backgroundButtonStyle.hover.background = GetCelTexture(LudoUITheme.Lightning);
+            backgroundButtonStyle.hover.textColor = LudoUITheme.Ink;
+            backgroundButtonStyle.border = new RectOffset(8, 8, 8, 8);
 
             stylesReady = true;
         }
@@ -1358,6 +1706,149 @@ namespace ElementalLudo.Gameplay
         {
             accentBarStyle.normal.background = GetSolidTexture(color);
             return accentBarStyle;
+        }
+
+        private GUIStyle MakeHeartStyle(Color color)
+        {
+            heartStyle.normal.background = GetHeartTexture(color);
+            return heartStyle;
+        }
+
+        /// <summary>
+        /// Generates a small nine-sliced card with clipped corners and a dark
+        /// ink contour. Keeping it procedural means every overlay stays crisp
+        /// at arbitrary Game-view resolutions without adding bitmap UI assets.
+        /// </summary>
+        private Texture2D GetCelTexture(Color fill)
+        {
+            string key = ColorUtility.ToHtmlStringRGBA(fill);
+            if (celTextureCache.TryGetValue(key, out Texture2D cached))
+            {
+                return cached;
+            }
+
+            const int size = 32;
+            const int cut = 5;
+            const int stroke = 3;
+            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                hideFlags = HideFlags.HideAndDontSave,
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp
+            };
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    bool inside =
+                        x + y >= cut &&
+                        (size - 1 - x) + y >= cut &&
+                        x + (size - 1 - y) >= cut &&
+                        (size - 1 - x) + (size - 1 - y) >= cut;
+
+                    if (!inside)
+                    {
+                        texture.SetPixel(x, y, Color.clear);
+                        continue;
+                    }
+
+                    bool edge =
+                        x < stroke || x >= size - stroke ||
+                        y < stroke || y >= size - stroke ||
+                        x + y < cut + stroke ||
+                        (size - 1 - x) + y < cut + stroke ||
+                        x + (size - 1 - y) < cut + stroke ||
+                        (size - 1 - x) + (size - 1 - y) < cut + stroke;
+                    Color pixel = fill;
+                    if (edge)
+                    {
+                        pixel = LudoUITheme.Ink;
+                    }
+                    else if (y >= size - stroke - 2)
+                    {
+                        pixel = LudoBoardVisualStyle.Lighten(fill, 0.16f);
+                    }
+                    else if (y <= stroke + 2)
+                    {
+                        pixel = LudoBoardVisualStyle.Shade(fill, 0.28f);
+                    }
+
+                    texture.SetPixel(x, y, pixel);
+                }
+            }
+
+            texture.Apply(false, true);
+            celTextureCache[key] = texture;
+            return texture;
+        }
+
+        private Texture2D GetHeartTexture(Color fill)
+        {
+            string key = "heart-" + ColorUtility.ToHtmlStringRGBA(fill);
+            if (celTextureCache.TryGetValue(key, out Texture2D cached))
+            {
+                return cached;
+            }
+
+            const int size = 32;
+            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                hideFlags = HideFlags.HideAndDontSave,
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp
+            };
+
+            bool[,] mask = new bool[size, size];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float nx = (x - 15.5f) / 13.5f;
+                    float ny = (y - 15f) / 13.5f;
+                    float expression = Mathf.Pow(nx * nx + ny * ny - 1f, 3f) -
+                                       nx * nx * ny * ny * ny;
+                    mask[x, y] = expression <= 0f;
+                }
+            }
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    if (!mask[x, y])
+                    {
+                        texture.SetPixel(x, y, Color.clear);
+                        continue;
+                    }
+
+                    bool outline = false;
+                    for (int oy = -1; oy <= 1 && !outline; oy++)
+                    {
+                        for (int ox = -1; ox <= 1; ox++)
+                        {
+                            int sampleX = x + ox;
+                            int sampleY = y + oy;
+                            if (sampleX < 0 || sampleX >= size ||
+                                sampleY < 0 || sampleY >= size ||
+                                !mask[sampleX, sampleY])
+                            {
+                                outline = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    Color pixel = outline
+                        ? LudoUITheme.Ink
+                        : Color.Lerp(fill, Color.white, Mathf.InverseLerp(0f, size, y) * 0.18f);
+                    texture.SetPixel(x, y, pixel);
+                }
+            }
+
+            texture.Apply(false, true);
+            celTextureCache[key] = texture;
+            return texture;
         }
 
         private Texture2D GetSolidTexture(Color color)

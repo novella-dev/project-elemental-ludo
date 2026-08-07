@@ -22,9 +22,9 @@ namespace ElementalLudo.Gameplay
         private static readonly LudoElement[] Order =
         {
             LudoElement.Fire,
+            LudoElement.Plant,
             LudoElement.Water,
-            LudoElement.Lightning,
-            LudoElement.Plant
+            LudoElement.Lightning
         };
 
         private readonly HashSet<LudoElement> unlocked =

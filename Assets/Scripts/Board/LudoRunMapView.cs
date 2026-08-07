@@ -37,18 +37,18 @@ namespace ElementalLudo.Board
         [Header("Layout")]
         [SerializeField] private float stageSpacing = 3.6f;
         [SerializeField] private float laneSpacing = 3.4f;
-        [SerializeField] private float nodeRadius = 0.85f;
+        [SerializeField] private float nodeRadius = 1f;
 
         // Sized against the screen, not by eye. At this camera the map covers
         // about 21 units for 1080 pixels, and heights are foreshortened by the
         // tilt on top of that — so the first pass at 0.45 came out sixteen
         // pixels tall with a seven-pixel bevel, which is why correct geometry
         // still looked like nothing had changed.
-        [SerializeField] private float nodeHeight = 1.1f;
+        [SerializeField] private float nodeHeight = 0.46f;
 
         [Tooltip("How much higher each stage stands than the one before it.")]
-        [SerializeField] private float stageRise = 0.85f;
-        [SerializeField] private float linkWidth = 0.16f;
+        [SerializeField] private float stageRise = 0.30f;
+        [SerializeField] private float linkWidth = 0.20f;
         [SerializeField] private float tokenSize = 1.5f;
 
         [Tooltip("Rival tokens shown over duel nodes, relative to the player's own.")]
@@ -75,10 +75,10 @@ namespace ElementalLudo.Board
         // contrast with all of them — the plate at 0.35 sits in the middle and
         // gives every node an edge in one direction or the other.
         [SerializeField] private Color background =
-            LudoBoardVisualStyle.Shade(LudoBoardVisualStyle.SafeCell, 0.80f);
+            new Color(0.055f, 0.07f, 0.09f, 1f);
 
         [SerializeField] private Color plateColor =
-            LudoBoardVisualStyle.Shade(LudoBoardVisualStyle.SafeCell, 0.52f);
+            new Color(0.008f, 0.012f, 0.018f, 1f);
 
         [Tooltip("How far the plate reaches past the outermost nodes.")]
         [SerializeField] private float plateMargin = 2.2f;
@@ -460,7 +460,7 @@ namespace ElementalLudo.Board
         }
 
         /// <summary>
-        /// A node as a low disc. Reachable ones stand taller and keep their
+        /// A node as a low bevelled platform. Reachable ones stand taller and keep their
         /// full colour; everything else is dimmed but still drawn, so the shape
         /// of the run ahead stays readable.
         /// </summary>
@@ -483,7 +483,7 @@ namespace ElementalLudo.Board
                 top = LudoBoardVisualStyle.Lighten(top, 0.22f);
             }
 
-            Color side = LudoBoardVisualStyle.Shade(top, 0.3f);
+            Color side = LudoBoardVisualStyle.Shade(top, 0.42f);
             float height = live ? nodeHeight * 1.6f : nodeHeight;
             float radius = node.Kind == LudoRunNodeKind.Boss
                 ? nodeRadius * 1.5f
@@ -491,21 +491,24 @@ namespace ElementalLudo.Board
                     ? nodeRadius * 1.2f
                     : nodeRadius;
 
-            int segments = node.Kind == LudoRunNodeKind.Boss ? 6 : 14;
             float groundZ = centre.z;
-            float rimZ = groundZ - height * 0.4f;
             float topZ = groundZ - height;
 
-            // Wall, then a bevelled shoulder, then the face. The shoulder is
-            // the point: every flat top in this scene lands in the same
-            // lighting band, so without a sloped ring between wall and face
-            // each node reads as a sticker rather than a solid.
-            builder.AddCylinder(flat, radius, groundZ, rimZ, segments, side, side);
-            builder.AddFrustum(
-                flat, radius, radius * 0.82f, rimZ, topZ, segments,
-                LudoBoardVisualStyle.Lighten(side, 0.18f), top);
-            builder.AddDisc(flat, radius * 0.82f, topZ, segments, top, Up);
-            BuildNodeMarker(builder, node, flat, radius * 0.82f, topZ, live);
+            // The reference uses chunky square tiles rather than cairns or
+            // circular pedestals. Two stacked boxes provide its dark base,
+            // coloured shoulder and smaller highlighted face.
+            AddBar(builder, flat, radius, radius * 0.72f, groundZ, topZ + 0.12f, side, true);
+            Color face = LudoBoardVisualStyle.Lighten(top, 0.08f);
+            AddBar(
+                builder,
+                flat,
+                radius * 0.88f,
+                radius * 0.60f,
+                topZ + 0.12f,
+                topZ,
+                face,
+                true);
+            BuildNodeMarker(builder, node, flat, radius * 0.72f, topZ, live);
         }
 
         /// <summary>
@@ -664,11 +667,11 @@ namespace ElementalLudo.Board
             }
             else if (run.IsCurrent(from) && run.IsChoice(to))
             {
-                colour = LudoBoardVisualStyle.Paper;
+                colour = LudoBoardVisualStyle.Lighten(NodeColor(to.Kind), 0.16f);
             }
             else
             {
-                colour = LudoBoardVisualStyle.Shade(LudoBoardVisualStyle.SafeCell, 0.35f);
+                colour = LudoBoardVisualStyle.Shade(NodeColor(to.Kind), 0.42f);
             }
 
             float width = walked ? linkWidth * 1.9f : linkWidth;
@@ -706,14 +709,15 @@ namespace ElementalLudo.Board
             {
                 LudoRunNodeKind.Reward => LudoBoardVisualStyle.Yellow,
                 LudoRunNodeKind.Duel =>
-                    LudoBoardVisualStyle.Lighten(LudoBoardVisualStyle.Blue, 0.15f),
+                    LudoBoardVisualStyle.Lighten(LudoBoardVisualStyle.Red, 0.12f),
                 LudoRunNodeKind.Heal =>
-                    LudoBoardVisualStyle.Lighten(LudoBoardVisualStyle.Green, 0.2f),
-                LudoRunNodeKind.Match => LudoBoardVisualStyle.SandMid,
+                    LudoBoardVisualStyle.Lighten(LudoBoardVisualStyle.Blue, 0.2f),
+                LudoRunNodeKind.Match =>
+                    LudoBoardVisualStyle.Lighten(LudoBoardVisualStyle.Red, 0.05f),
                 LudoRunNodeKind.Elite =>
-                    LudoBoardVisualStyle.Lighten(LudoBoardVisualStyle.Red, 0.38f),
+                    LudoBoardVisualStyle.Lighten(LudoBoardVisualStyle.Red, 0.28f),
                 LudoRunNodeKind.Boss =>
-                    LudoBoardVisualStyle.Shade(LudoBoardVisualStyle.Red, 0.55f),
+                    LudoBoardVisualStyle.Lighten(LudoBoardVisualStyle.Yellow, 0.08f),
                 _ => LudoBoardVisualStyle.SafeCell
             };
         }
